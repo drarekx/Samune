@@ -1,6 +1,6 @@
 <!doctype html>
 <!-- Samune app icon. Source of truth for Resources/AppIcon.icns: regenerate with scripts/make-icon.sh.
-     Starting point only: redesign it for the app (a recognisable object on the brand squircle). -->
+     A search bar with a lens over two result rows, on the brand squircle. -->
 <html lang="es">
 <head>
 <meta charset="utf-8">
@@ -11,12 +11,26 @@ html, body { margin: 0; background: transparent; }
 .squircle { position: absolute; left: 100px; top: 100px; width: 824px; height: 824px; border-radius: 185px;
   background: linear-gradient(160deg, #4A7BF0 0%, #3566E0 55%, #2A52B8 100%);
   overflow: hidden; box-shadow: 0 18px 36px rgba(0,0,0,0.32); }
-.card { position: absolute; left: 212px; top: 212px; width: 600px; height: 600px; border-radius: 120px;
-  background: #FFFFFF; box-shadow: 0 26px 52px rgba(8,14,40,0.35); display: flex; align-items: center; justify-content: center; }
-.glyph { font-size: 380px; font-weight: 800; color: #3566E0; letter-spacing: -0.04em; }
+.bar { position: absolute; left: 112px; top: 190px; width: 600px; height: 168px; border-radius: 84px;
+  background: #FFFFFF; box-shadow: 0 26px 52px rgba(8,14,40,0.35); }
+.lens { position: absolute; left: 46px; top: 38px; width: 62px; height: 62px; border-radius: 50%;
+  border: 17px solid #3566E0; }
+.handle { position: absolute; left: 121px; top: 104px; width: 17px; height: 44px; border-radius: 9px;
+  background: #3566E0; transform: rotate(-45deg); transform-origin: top center; }
+.caret { position: absolute; left: 196px; top: 46px; width: 14px; height: 76px; border-radius: 7px; background: #3566E0; opacity: 0.55; }
+.row { position: absolute; left: 112px; width: 600px; height: 104px; border-radius: 36px; background: rgba(255,255,255,0.20); }
+.row.selected { background: rgba(255,255,255,0.94); box-shadow: 0 16px 32px rgba(8,14,40,0.22); }
+.row i { position: absolute; left: 26px; top: 22px; width: 60px; height: 60px; border-radius: 17px; background: rgba(255,255,255,0.75); }
+.row.selected i { background: #3566E0; }
+.row b { position: absolute; left: 112px; top: 40px; height: 24px; border-radius: 12px; background: rgba(255,255,255,0.75); }
+.row.selected b { background: #9DB6F2; }
 </style>
 </head>
 <body>
-<div class="icon"><div class="squircle"><div class="card"><span class="glyph">S</span></div></div></div>
+<div class="icon"><div class="squircle">
+  <div class="bar"><div class="lens"></div><div class="handle"></div><div class="caret"></div></div>
+  <div class="row selected" style="top: 404px"><i></i><b style="width: 330px"></b></div>
+  <div class="row" style="top: 530px"><i></i><b style="width: 250px"></b></div>
+</div></div>
 </body>
 </html>
