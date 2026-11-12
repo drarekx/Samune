@@ -31,7 +31,6 @@ git tag v1.0.1 && git push origin v1.0.1
 | Archivo | Qué hace |
 |---|---|
 | `main.swift`, `AppDelegate.swift` | Arranque, `AppInfo` (nombre, repo, Buy Me a Coffee, `menuBarApp`), icono y menú de la barra de menús, ventanas (principal y Ajustes), menú principal, gancho de depuración |
-| `MainView.swift` | Ventana principal |
 | `SettingsPane.swift` | Ajustes: colores, abrir al iniciar sesión, idioma, actualizaciones, invitar a un café |
 | `Settings.swift` | `UserDefaults` (`com.egluu.samune`), `LoginItem` (`SMAppService`) |
 | `Theme.swift` | Colores (sacados del tema elegido) y controles comunes: `AppButtonStyle`, `IconButton`, `SegmentedControl`, `SectionLabel`, `AppTextField`, `SwitchRow`, `appCard` |
@@ -80,11 +79,13 @@ Lanzador estilo Raycast, estudiado en clean-room (solo qué hace; ni código ni 
 - La app no está notarizada (firma ad-hoc): los permisos de privacidad (Descargas, Accesibilidad…) pueden volver a pedirse tras cada actualización.
 - Builds universales (`--arch arm64 --arch x86_64`) necesitan Xcode completo; `build-app.sh` cae a la arquitectura nativa con solo CLT.
 - **Runners de GitHub**: `macos-14` ya no existe. En `macos-15` el job puede quedarse en cola; relanzar con `gh run rerun <id>`.
+- **Varias copias de debug a la vez** (workers en worktrees) comparten `~/Library/Application Support/Samune` y el dominio `Samune`: aislar cada una con `CFFIXED_USER_HOME=<carpeta>` y no usar `pkill -f .build/debug/Samune` (mata las de los demás).
+- **Tablas de traducción por área**: una clave solo puede estar en una tabla; si dos áreas la usan («Cancelar»), va en la común de `Localization.swift` o en una sola.
 - `main.swift` envuelve el arranque en `MainActor.assumeIsolated` porque `AppDelegate` es `@MainActor`.
 
 ## Pruebas manuales
 
-- **Gancho de depuración** (solo debug): `.build/debug/Samune` y `DistributedNotificationCenter` `com.egluu.samune.debug` con objeto `main`, `settings` o `theme:<id>`. Añadir ahí los comandos que haga falta para llevar la app a cada estado sin ratón.
+- **Gancho de depuración** (solo debug): `.build/debug/Samune` y `DistributedNotificationCenter` `com.egluu.samune.debug` con objeto `panel`, `hide`, `query:<texto>` (abre el panel con ese texto), `settings`, `theme:<id>` o `integrations:<texto>|<archivo>`. Añadir ahí los comandos que haga falta para llevar la app a cada estado sin ratón.
 - **Capturas sin permisos**: el comando `shot:<carpeta>` del gancho guarda un PNG de cada ventana visible de la app (`cacheDisplay`). Es lo primero a usar: `screencapture -l` falla con «could not create image from window» si Terminal no tiene grabación de pantalla.
 - **El sandbox de Bash** aísla el portapapeles y otras apps (`pbcopy`, `screencapture`, Chrome headless): esas pruebas, fuera del sandbox.
 - **Capturas** (con permiso de grabación de pantalla): `screencapture -x -l <id de ventana>` saca solo la ventana, sin el escritorio. Los ids, con `CGWindowListCopyWindowInfo` filtrando por propietario `Samune`.

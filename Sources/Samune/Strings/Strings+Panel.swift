@@ -11,7 +11,6 @@ enum PanelStrings {
             "Opens the search bar from any app, even when %@ is not in front.",
         "Pulsa la combinación nueva (con ⌘, ⌥ o ⌃). Esc cancela.":
             "Press the new combination (with ⌘, ⌥ or ⌃). Esc cancels.",
-        "Cancelar": "Cancel",
         "Grabar atajo": "Record shortcut",
         "Restablecer": "Reset",
         "Vuelve a %@": "Back to %@",
@@ -31,7 +30,6 @@ enum PanelStrings {
             "Obre la barra de cerca des de qualsevol app, encara que %@ no estigui al davant.",
         "Pulsa la combinación nueva (con ⌘, ⌥ o ⌃). Esc cancela.":
             "Prem la combinació nova (amb ⌘, ⌥ o ⌃). Esc cancel·la.",
-        "Cancelar": "Cancel·la",
         "Grabar atajo": "Enregistra la drecera",
         "Restablecer": "Restableix",
         "Vuelve a %@": "Torna a %@",
