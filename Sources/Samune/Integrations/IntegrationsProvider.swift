@@ -2,9 +2,139 @@ import Foundation
 
 /// Integration commands in the root search ("Bookmarks" → enters "bm ") and their items
 /// once the query starts with a keyword ("bm laravel"), exclusively.
-/// STUB: replaced by the integrations worker.
 @MainActor
 final class IntegrationsProvider: SearchProvider {
     let priority = 10
-    func search(_ query: String) async -> ProviderResponse { .empty }
+    private let maxItems = 50
+    private let debounce: UInt64 = 250_000_000
+
+    func search(_ query: String) async -> ProviderResponse {
+        let store = IntegrationStore.shared
+        let active = store.active
+        let lowered = query.lowercased()
+        if let integration = active.first(where: {
+            guard let keyword = $0.manifest?.keyword.lowercased() else { return false }
+            return lowered.hasPrefix(keyword + " ")
+        }), let manifest = integration.manifest {
+            let rest = String(query.dropFirst(manifest.keyword.count + 1)).trimmingCharacters(in: .whitespaces)
+            return await searchInside(integration, manifest: manifest, rest: rest)
+        }
+        return root(query, active)
+    }
+
+    // MARK: - Root
+
+    private func root(_ query: String, _ active: [Integration]) -> ProviderResponse {
+        let items = active.compactMap { integration -> ResultItem? in
+            guard let manifest = integration.manifest,
+                  let score = Fuzzy.score(query, in: [manifest.name, manifest.keyword]) else { return nil }
+            let id = "integration:\(integration.id)"
+            return ResultItem(id: id, title: manifest.name,
+                              subtitle: tr("Escribe «%@» y un espacio para buscar", manifest.keyword),
+                              icon: integration.icon, kind: tr("Integración"),
+                              action: .setQuery(manifest.keyword + " "),
+                              score: score + Frecency.shared.boost(id))
+        }
+        return ProviderResponse(items: items)
+    }
+
+    // MARK: - Inside an integration
+
+    private func searchInside(_ integration: Integration, manifest: IntegrationManifest, rest: String) async -> ProviderResponse {
+        let store = IntegrationStore.shared
+        if manifest.passQuery, !store.hasFreshCache(integration, query: rest) {
+            try? await Task.sleep(nanoseconds: debounce)
+            if Task.isCancelled { return ProviderResponse(items: [], exclusive: true) }
+        }
+        let outcome = await store.output(of: integration, query: rest)
+        if Task.isCancelled { return ProviderResponse(items: [], exclusive: true) }
+
+        switch outcome {
+        case .cancelled:
+            return ProviderResponse(items: [], exclusive: true)
+        case .failure(let short, let detail):
+            return ProviderResponse(items: [errorRow(integration, short: short, detail: detail)], exclusive: true)
+        case .items(let scriptItems):
+            var rows: [ResultItem] = []
+            for (index, scriptItem) in scriptItems.enumerated() {
+                let orderScore = 1 - Double(index) / 10_000
+                var row = resultItem(scriptItem, integration: integration, score: orderScore)
+                if !manifest.passQuery, !rest.isEmpty {
+                    guard let match = Fuzzy.score(rest, in: [scriptItem.title, scriptItem.subtitle ?? ""]) else { continue }
+                    row.score = match + Frecency.shared.boost(row.id)
+                }
+                rows.append(row)
+            }
+            if !manifest.passQuery, !rest.isEmpty {
+                rows.sort { $0.score > $1.score }
+            }
+            return ProviderResponse(items: Array(rows.prefix(maxItems)), exclusive: true)
+        }
+    }
+
+    private func errorRow(_ integration: Integration, short: String, detail: String) -> ResultItem {
+        ResultItem(id: "int:\(integration.id):error", title: integration.name + ": " + short,
+                   subtitle: detail == short || detail.isEmpty ? nil : tr("Return copia el mensaje completo"),
+                   icon: .symbol("exclamationmark.triangle"), kind: integration.name,
+                   action: .copy(detail.isEmpty ? short : detail), score: 1)
+    }
+
+    // MARK: - Conversion
+
+    private func resultItem(_ item: ScriptItem, integration: Integration, score: Double) -> ResultItem {
+        let folder = integration.folder
+        var fileURL: URL?
+        let action: ResultAction
+        switch (item.actionType, item.actionValue) {
+        case ("open", let value?):
+            if let url = Self.openURL(value, folder: folder) {
+                action = .open(url)
+                if url.isFileURL { fileURL = url }
+            } else {
+                action = .copy(value)
+            }
+        case ("copy", let value?):
+            action = .copy(value)
+        case ("run", let value?):
+            action = .run(command: value, directory: folder)
+        default:
+            action = .copy(item.copy ?? item.title)
+        }
+        let key = item.actionValue ?? item.title
+        return ResultItem(id: "int:\(integration.id):\(key)", title: item.title, subtitle: item.subtitle,
+                          icon: icon(item.icon, integration: integration), kind: integration.name,
+                          action: action, score: score, fileURL: fileURL, copyText: item.copy)
+    }
+
+    /// Web URL, `file://` URL, or a path (absolute, `~/…` or relative to the integration folder).
+    static func openURL(_ value: String, folder: URL) -> URL? {
+        if value.hasPrefix("/") || value.hasPrefix("~") {
+            return URL(fileURLWithPath: (value as NSString).expandingTildeInPath)
+        }
+        if let url = URL(string: value), let scheme = url.scheme, !scheme.isEmpty {
+            return url
+        }
+        if let encoded = value.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
+           let url = URL(string: encoded), let scheme = url.scheme, !scheme.isEmpty {
+            return url
+        }
+        guard !value.isEmpty else { return nil }
+        return folder.appendingPathComponent(value).standardizedFileURL
+    }
+
+    private func icon(_ value: String?, integration: Integration) -> ItemIcon {
+        guard let value, !value.isEmpty else { return integration.icon }
+        if value.hasPrefix("sf:") {
+            let name = String(value.dropFirst(3))
+            return name.isEmpty ? integration.icon : .symbol(name)
+        }
+        let lowered = value.lowercased()
+        if lowered.hasPrefix("http://") || lowered.hasPrefix("https://") {
+            return URL(string: value).map(ItemIcon.remote) ?? integration.icon
+        }
+        let url = value.hasPrefix("/") || value.hasPrefix("~")
+            ? URL(fileURLWithPath: (value as NSString).expandingTildeInPath)
+            : integration.folder.appendingPathComponent(value)
+        return FileManager.default.fileExists(atPath: url.path) ? .image(url) : integration.icon
+    }
 }
