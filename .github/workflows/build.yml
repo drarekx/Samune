@@ -1,0 +1,27 @@
+name: Build
+
+# Compiles Samune for Apple Silicon and Intel on every pull request and push to main.
+# Required status check for merging into main.
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build (arm64 + x86_64)
+        run: swift build -c release --arch arm64 --arch x86_64
+
+      - name: Check translations
+        run: python3 scripts/check-translations.py
