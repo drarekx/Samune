@@ -10,29 +10,86 @@ enum LauncherLayout {
     static let maxVisibleRows = 9
     static let messageHeight: CGFloat = 46
     static let footerHeight: CGFloat = 32
+    static let sectionHeight: CGFloat = 26
     static let cornerRadius: CGFloat = 14
 
-    static func height(queryIsEmpty: Bool, rows: Int) -> CGFloat {
-        guard !queryIsEmpty else { return fieldHeight }
-        let body = rows == 0 ? messageHeight : CGFloat(min(rows, maxVisibleRows)) * rowHeight + listPadding * 2
+    static let menuWidth: CGFloat = 340
+    static let menuRowHeight: CGFloat = 32
+    static let menuPadding: CGFloat = 4
+    static let menuFilterHeight: CGFloat = 36
+    static let menuMaxRows = 8
+    static let menuMargin: CGFloat = 8
+
+    /// - Parameters:
+    ///   - suggestions: the rows are suggestions for the empty field (a label goes above them).
+    ///   - menuRows: number of actions when the actions menu is open (the unfiltered count, so
+    ///     typing in the menu never resizes the panel).
+    static func height(queryIsEmpty: Bool, rows: Int, menuRows: Int? = nil) -> CGFloat {
+        if queryIsEmpty && rows == 0 { return fieldHeight }
+        var body = rows == 0 ? messageHeight : listHeight(rows: rows)
+        if queryIsEmpty { body += sectionHeight }
+        if let menuRows { body = max(body, menuHeight(rows: menuRows) + menuMargin * 2) }
         return fieldHeight + 1 + body + 1 + footerHeight
+    }
+
+    static func listHeight(rows: Int) -> CGFloat {
+        CGFloat(min(rows, maxVisibleRows)) * rowHeight + listPadding * 2
+    }
+
+    static func menuListHeight(rows: Int) -> CGFloat {
+        CGFloat(max(1, min(rows, menuMaxRows))) * menuRowHeight + menuPadding * 2
+    }
+
+    static func menuHeight(rows: Int) -> CGFloat {
+        menuListHeight(rows: rows) + 1 + menuFilterHeight
     }
 }
 
-/// State of the panel: the text of the field and the selected row.
+/// The open actions menu: the row it belongs to, its actions and what was typed to filter them.
+struct ActionsMenuState {
+    let item: ResultItem
+    let all: [RowAction]
+    var filter = ""
+    var selected = 0
+
+    /// Actions matching the filter, best first (all of them, in order, without a filter).
+    var visible: [RowAction] {
+        let text = filter.trimmingCharacters(in: .whitespaces)
+        guard !text.isEmpty else { return all }
+        return all.enumerated()
+            .compactMap { index, action in Fuzzy.score(text, action.title).map { (index, action, $0) } }
+            .sorted { $0.2 != $1.2 ? $0.2 > $1.2 : $0.0 < $1.0 }
+            .map(\.1)
+    }
+
+    var selectedAction: RowAction? {
+        let list = visible
+        return list.indices.contains(selected) ? list[selected] : nil
+    }
+}
+
+/// State of the panel: the text of the field, the selected row and the actions menu.
 @MainActor
 final class LauncherModel: ObservableObject {
     @Published var query = ""
     @Published var selectedID: String?
+    /// Non-nil while the actions menu (⌘K) is open.
+    @Published private(set) var menu: ActionsMenuState?
     /// The AppKit field, set by `LauncherSearchField` when it is created.
     weak var field: NSTextField?
     /// True once the user moved the selection for the current query.
     private var userMoved = false
+    /// Row index to keep after an action refreshed the results.
+    private var keptIndex: Int?
 
     var queryIsEmpty: Bool { query.trimmingCharacters(in: .whitespaces).isEmpty }
 
     var selectedItem: ResultItem? {
         SearchEngine.shared.results.first { $0.id == selectedID }
+    }
+
+    var selectedIndex: Int? {
+        SearchEngine.shared.results.firstIndex { $0.id == selectedID }
     }
 
     /// The text changed (typing or programmatically): searches again.
@@ -41,14 +98,28 @@ final class LauncherModel: ObservableObject {
         // Set the field now, not in the next SwiftUI update, so the caret can be placed right away.
         if let field, field.stringValue != text { field.stringValue = text }
         userMoved = false
+        keptIndex = nil
+        menu = nil
         SearchEngine.shared.update(query: text)
     }
 
     /// First row, unless the user picked one that is still there while results stream in.
     func resultsChanged(_ results: [ResultItem]) {
+        if let index = keptIndex {
+            selectedID = results.isEmpty ? nil : results[min(index, results.count - 1)].id
+            if !SearchEngine.shared.isSearching { keptIndex = nil }
+            userMoved = true
+            return
+        }
         if userMoved, let selectedID, results.contains(where: { $0.id == selectedID }) { return }
         userMoved = false
         selectedID = results.first?.id
+    }
+
+    /// After an action that keeps the panel open: the next results keep the selection at this index.
+    func keepSelection(at index: Int) {
+        keptIndex = index
+        menu = nil
     }
 
     func move(_ delta: Int) {
@@ -59,6 +130,39 @@ final class LauncherModel: ObservableObject {
         selectedID = results[next].id
         userMoved = true
     }
+
+    // MARK: Actions menu
+
+    /// Opens the menu for the selected row. False when no row is selected.
+    @discardableResult
+    func openMenu() -> Bool {
+        guard let item = selectedItem else { return false }
+        menu = ActionsMenuState(item: item, all: SearchEngine.shared.actions(for: item))
+        return true
+    }
+
+    func closeMenu() { menu = nil }
+
+    func moveInMenu(_ delta: Int) {
+        guard var state = menu else { return }
+        let count = state.visible.count
+        guard count > 0 else { return }
+        state.selected = ((state.selected + delta) % count + count) % count
+        menu = state
+    }
+
+    func selectInMenu(_ index: Int) {
+        guard var state = menu, state.selected != index else { return }
+        state.selected = index
+        menu = state
+    }
+
+    func setMenuFilter(_ text: String) {
+        guard var state = menu else { return }
+        state.filter = text
+        state.selected = 0
+        menu = state
+    }
 }
 
 /// Content of the launcher panel.
@@ -66,22 +170,47 @@ struct LauncherView: View {
     @ObservedObject var model: LauncherModel
     @ObservedObject private var engine = SearchEngine.shared
     let onActivate: (ResultItem) -> Void
+    let onAction: (RowAction, ResultItem) -> Void
+
+    private var showsSuggestions: Bool { model.queryIsEmpty && engine.showingSuggestions }
 
     var body: some View {
         VStack(spacing: 0) {
             header
-            if !model.queryIsEmpty {
+            if !model.queryIsEmpty || !engine.results.isEmpty {
                 Rectangle().fill(Theme.line).frame(height: 1)
-                if engine.results.isEmpty {
-                    Text(engine.isSearching ? "" : tr("Sin resultados"))
-                        .font(.system(size: 13))
-                        .foregroundStyle(Theme.text3)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.horizontal, 20)
-                        .frame(height: LauncherLayout.messageHeight)
-                } else {
-                    list
+                ZStack(alignment: .bottomTrailing) {
+                    VStack(spacing: 0) {
+                        if showsSuggestions {
+                            Text(tr("Sugerencias"))
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundStyle(Theme.text3)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.horizontal, 18)
+                                .frame(height: LauncherLayout.sectionHeight, alignment: .bottom)
+                        }
+                        if engine.results.isEmpty {
+                            Text(engine.isSearching ? "" : tr("Sin resultados"))
+                                .font(.system(size: 13))
+                                .foregroundStyle(Theme.text3)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.horizontal, 20)
+                                .frame(height: LauncherLayout.messageHeight)
+                        } else {
+                            list
+                        }
+                    }
+                    .frame(maxHeight: .infinity, alignment: .top)
+                    if let menu = model.menu {
+                        // Clicking outside the menu closes it.
+                        Color.clear
+                            .contentShape(Rectangle())
+                            .onTapGesture { model.closeMenu() }
+                        ActionsMenuView(menu: menu, model: model) { action in onAction(action, menu.item) }
+                            .padding(LauncherLayout.menuMargin)
+                    }
                 }
+                .frame(maxHeight: .infinity)
                 Rectangle().fill(Theme.line).frame(height: 1)
                 footer
             }
@@ -125,12 +254,21 @@ struct LauncherView: View {
     }
 
     private var footer: some View {
-        HStack(spacing: 16) {
-            hint("↩", tr("Abrir"))
-            hint("⌘↩", tr("Mostrar en Finder"))
-            hint("⌘C", tr("Copiar"))
-            hint("esc", tr("Cerrar"))
+        let actions = model.menu?.all ?? model.selectedItem.map { engine.actions(for: $0) } ?? []
+        let returnTitle = model.menu.map { $0.selectedAction?.title ?? "" } ?? actions.first?.title
+        return HStack(spacing: 16) {
+            if let returnTitle, !returnTitle.isEmpty { hint("↩", returnTitle) }
+            hint("esc", model.menu == nil ? tr("Cerrar") : tr("Volver"))
             Spacer(minLength: 0)
+            if actions.count > 1 {
+                HStack(spacing: 5) {
+                    Text(tr("Acciones")).font(.system(size: 11))
+                        .foregroundStyle(model.menu == nil ? Theme.text3 : Theme.accentText)
+                    Text("⌘K").font(.system(size: 11, weight: .semibold)).foregroundStyle(Theme.text2)
+                }
+                .contentShape(Rectangle())
+                .onTapGesture { if model.menu == nil { model.openMenu() } else { model.closeMenu() } }
+            }
         }
         .padding(.horizontal, 18)
         .frame(height: LauncherLayout.footerHeight)
@@ -141,6 +279,99 @@ struct LauncherView: View {
             Text(keys).font(.system(size: 11, weight: .semibold)).foregroundStyle(Theme.text2)
             Text(label).font(.system(size: 11)).foregroundStyle(Theme.text3)
         }
+    }
+}
+
+/// The actions menu, anchored at the bottom right of the results. The filter is typed through the
+/// panel's key handling (the search field keeps the focus), so it is plain text here.
+private struct ActionsMenuView: View {
+    let menu: ActionsMenuState
+    @ObservedObject var model: LauncherModel
+    let onRun: (RowAction) -> Void
+
+    var body: some View {
+        let visible = menu.visible
+        VStack(spacing: 0) {
+            ScrollViewReader { proxy in
+                ScrollView {
+                    VStack(spacing: 0) {
+                        if visible.isEmpty {
+                            Text(tr("Sin resultados"))
+                                .font(.system(size: 12.5))
+                                .foregroundStyle(Theme.text3)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.horizontal, 12)
+                                .frame(height: LauncherLayout.menuRowHeight)
+                        }
+                        ForEach(Array(visible.enumerated()), id: \.element.id) { index, action in
+                            ActionRow(action: action, selected: index == menu.selected)
+                                .id(action.id)
+                                .onTapGesture { onRun(action) }
+                                .onHover { inside in if inside { model.selectInMenu(index) } }
+                        }
+                    }
+                    .padding(.vertical, LauncherLayout.menuPadding)
+                }
+                .scrollIndicators(visible.count > LauncherLayout.menuMaxRows ? .automatic : .never)
+                .frame(height: LauncherLayout.menuListHeight(rows: visible.count))
+                .onChange(of: menu.selected) { _, index in
+                    guard visible.indices.contains(index) else { return }
+                    proxy.scrollTo(visible[index].id)
+                }
+            }
+            Rectangle().fill(Theme.line).frame(height: 1)
+            HStack(spacing: 8) {
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(Theme.text3)
+                Text(menu.filter.isEmpty ? tr("Buscar acciones…") : menu.filter)
+                    .font(.system(size: 13))
+                    .foregroundStyle(menu.filter.isEmpty ? Theme.text3 : Theme.text)
+                    .lineLimit(1)
+                if !menu.filter.isEmpty {
+                    Rectangle().fill(Theme.accent).frame(width: 1.5, height: 15)
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 12)
+            .frame(height: LauncherLayout.menuFilterHeight)
+        }
+        .frame(width: LauncherLayout.menuWidth)
+        .background(Theme.card, in: RoundedRectangle(cornerRadius: 10))
+        .overlay { RoundedRectangle(cornerRadius: 10).strokeBorder(Theme.lineStrong, lineWidth: 1) }
+    }
+}
+
+private struct ActionRow: View {
+    let action: RowAction
+    let selected: Bool
+
+    var body: some View {
+        let color = action.destructive ? Theme.danger : Theme.text
+        HStack(spacing: 10) {
+            Image(systemName: IconLoader.shared.symbolName(action.symbol))
+                .font(.system(size: 12.5))
+                .foregroundStyle(action.destructive ? Theme.danger : Theme.text2)
+                .frame(width: 18)
+            Text(action.title)
+                .font(.system(size: 13))
+                .foregroundStyle(color)
+                .lineLimit(1)
+            Spacer(minLength: 8)
+            if let shortcut = action.shortcut {
+                Text(shortcut.label)
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(Theme.text2)
+                    .padding(.horizontal, 6)
+                    .frame(height: 20)
+                    .background(Theme.control, in: RoundedRectangle(cornerRadius: 5))
+            }
+        }
+        .padding(.horizontal, 8)
+        .frame(height: LauncherLayout.menuRowHeight)
+        .background(selected ? Theme.navSelected : .clear, in: RoundedRectangle(cornerRadius: 6))
+        .contentShape(Rectangle())
+        .padding(.horizontal, LauncherLayout.menuPadding)
     }
 }
 

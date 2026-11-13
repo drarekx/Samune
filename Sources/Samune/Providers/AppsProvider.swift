@@ -53,6 +53,36 @@ final class AppsProvider: SearchProvider {
         return ProviderResponse(items: Array(items))
     }
 
+    /// The most used apps, by frecency. Apps that no longer exist are skipped.
+    func suggestions() async -> [ResultItem] {
+        let prefix = "app:"
+        let top = Frecency.shared.top(prefix: prefix, limit: 30)
+        guard !top.isEmpty else { return [] }
+        let entries = await index.entries(extraFolders: settings.extraAppFolders, includePanes: false)
+        guard !Task.isCancelled else { return [] }
+        let byPath = Dictionary(entries.map { ($0.bundleURL.path, $0) }, uniquingKeysWith: { first, _ in first })
+        let paths = top.map { String($0.id.dropFirst(prefix.count)) }
+        // Existence checks off the main thread: a disconnected volume can make `stat` slow.
+        let existing = await Task.detached(priority: .userInitiated) {
+            Set(paths.filter { FileManager.default.fileExists(atPath: $0) })
+        }.value
+        guard !Task.isCancelled else { return [] }
+
+        var items: [ResultItem] = []
+        for (id, _) in top where items.count < Self.suggestionCount {
+            let path = String(id.dropFirst(prefix.count))
+            guard existing.contains(path) else { continue }
+            let url = URL(fileURLWithPath: path)
+            let entry = byPath[path] ?? AppEntry(kind: .app, title: url.deletingPathExtension().lastPathComponent,
+                                                 names: [], bundleURL: url, openURL: url)
+            // `item` adds the frecency boost: that is the whole score of a suggestion.
+            items.append(item(for: entry, score: 0))
+        }
+        return items
+    }
+
+    private static let suggestionCount = 6
+
     private func item(for entry: AppEntry, score: Double) -> ResultItem {
         switch entry.kind {
         case .app:
