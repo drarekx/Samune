@@ -255,6 +255,8 @@ final class LauncherController {
         case .setQuery(let text):
             model.queryChanged(text)
             focusField(selectAll: false)
+        case .refresh:
+            break
         }
     }
 }

@@ -17,6 +17,7 @@ struct SettingsPane: View {
                 HotkeySettingsCard()
                 SearchSettingsCard()
                 IntegrationsSettingsCard()
+                NotesSettingsCard()
 
                 VStack(alignment: .leading, spacing: 12) {
                     SectionLabel(tr("Colores"))

@@ -39,6 +39,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         installDebugHook()
         registerCommands()
         IntegrationStore.shared.start()
+        NotesController.shared.start()
         LauncherController.shared.start()
 
         // The first launch shows the settings, where the shortcut is; afterwards the app stays in the menu bar.

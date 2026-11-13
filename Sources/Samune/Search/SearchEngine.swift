@@ -15,10 +15,15 @@ final class SearchEngine: ObservableObject {
     enum Outcome {
         case close
         case setQuery(String)
+        /// The panel stays open and shows the results of the same query again.
+        case refresh
     }
 
     /// Built-in actions (`ResultAction.perform`), registered by `AppDelegate`.
     var performers: [String: () -> Void] = [:]
+    /// Actions with an argument (`ResultAction.invoke`), registered by each area at launch.
+    var handlers: [String: (String) -> Void] = [:]
+    private var lastQuery = ""
 
     private let providers: [SearchProvider]
     private var generation = 0
@@ -26,11 +31,13 @@ final class SearchEngine: ObservableObject {
     private let maxResults = 60
 
     private init() {
-        providers = [AppsProvider(), CommandsProvider(), IntegrationsProvider(), FilesProvider()]
+        providers = [AppsProvider(), CalculatorProvider(), CommandsProvider(), NotesProvider(),
+                     IntegrationsProvider(), FilesProvider()]
     }
 
     /// Call on every change of the search field.
     func update(query: String) {
+        lastQuery = query
         generation += 1
         let current = generation
         tasks.forEach { $0.cancel() }
@@ -71,11 +78,26 @@ final class SearchEngine: ObservableObject {
 
     // MARK: - Actions
 
+    /// Searches the current query again (after an action that changes the results).
+    func refresh() { update(query: lastQuery) }
+
     /// Return on a row.
     func activate(_ item: ResultItem) -> Outcome {
-        if case .setQuery(let text) = item.action { return .setQuery(text) }
         Frecency.shared.record(item.id)
-        switch item.action {
+        return run(item.action)
+    }
+
+    /// An entry of the actions menu.
+    func perform(_ action: ItemAction, on item: ResultItem) -> Outcome {
+        let outcome = run(action.action)
+        guard action.keepsPanelOpen, case .close = outcome else { return outcome }
+        refresh()
+        return .refresh
+    }
+
+    private func run(_ action: ResultAction) -> Outcome {
+        if case .setQuery(let text) = action { return .setQuery(text) }
+        switch action {
         case .open(let url):
             NSWorkspace.shared.open(url)
         case .copy(let text):
@@ -85,6 +107,8 @@ final class SearchEngine: ObservableObject {
         case .perform(let id):
             // After the panel has closed, so windows opened by the action come to the front.
             DispatchQueue.main.async { [weak self] in self?.performers[id]?() }
+        case .invoke(let handler, let argument):
+            handlers[handler]?(argument)
         case .setQuery:
             break
         }

@@ -24,6 +24,35 @@ enum ResultAction: Hashable {
     case setQuery(String)
     /// Runs code inside the app (built-in commands).
     case perform(id: String)
+    /// Calls `SearchEngine.shared.handlers[handler]` with `argument` ("notes.pin", "<note id>").
+    case invoke(handler: String, argument: String)
+}
+
+/// Key of an action in the actions menu ("p" with ⌘ → ⌘P).
+struct KeyShortcut: Hashable {
+    /// Lowercase character ("p"), or "delete" / "return".
+    var key: String
+    var command = true
+    var shift = false
+    var option = false
+    var control = false
+}
+
+/// One more thing a row can do, listed in the actions menu (⌘K).
+struct ItemAction: Identifiable, Hashable {
+    /// Unique inside the row ("pin", "trash").
+    let id: String
+    /// Already translated.
+    var title: String
+    /// SF Symbol name.
+    var symbol: String
+    /// Works straight from the list too, without opening the menu.
+    var shortcut: KeyShortcut?
+    var action: ResultAction
+    /// True when the panel stays open and the results are searched again (pin, delete).
+    var keepsPanelOpen = false
+    /// Shown in the warning colour.
+    var destructive = false
 }
 
 /// One row of the launcher.
@@ -42,6 +71,8 @@ struct ResultItem: Identifiable, Hashable {
     var fileURL: URL?
     /// Text for ⌘C. Defaults to the path or the URL of the action.
     var copyText: String?
+    /// Extra actions for the actions menu, after the ones every row gets (open, reveal, copy).
+    var actions: [ItemAction] = []
 }
 
 /// What a provider answers to one query.
@@ -64,4 +95,10 @@ protocol SearchProvider: AnyObject {
     /// Lower goes first in the list (apps 0, commands 5, integrations 10, files 20).
     var priority: Int { get }
     func search(_ query: String) async -> ProviderResponse
+    /// Rows for the empty search field (most used apps, recent notes…). Scores order them.
+    func suggestions() async -> [ResultItem]
+}
+
+extension SearchProvider {
+    func suggestions() async -> [ResultItem] { [] }
 }
