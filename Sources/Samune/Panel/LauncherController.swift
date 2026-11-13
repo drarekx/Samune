@@ -52,6 +52,12 @@ final class LauncherController {
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in self?.resize() }
             .store(in: &cancellables)
+        AIChat.shared.$account
+            .map { $0 != nil }
+            .removeDuplicates()
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in self?.resize() }
+            .store(in: &cancellables)
         installDebugCommands()
         // Suggestions ready for the first time the panel opens.
         model.queryChanged("")
@@ -81,6 +87,7 @@ final class LauncherController {
         guard isShown, let panel else { return }
         isShown = false
         panel.orderOut(nil)
+        AIChat.shared.close()
         model.queryChanged("")
         // If a Samune window was in front before, give it the keyboard back.
         if NSApp.isActive, NSApp.keyWindow == nil,
@@ -171,7 +178,8 @@ final class LauncherController {
     }
 
     private var currentHeight: CGFloat {
-        LauncherLayout.height(queryIsEmpty: model.queryIsEmpty, rows: engine.results.count,
+        if AIChat.shared.isActive { return LauncherLayout.answerPanelHeight() }
+        return LauncherLayout.height(queryIsEmpty: model.queryIsEmpty, rows: engine.results.count,
                               menuRows: model.menu?.all.count)
     }
 
@@ -242,6 +250,7 @@ final class LauncherController {
     /// selected row declares that shortcut; otherwise the key edits the field as usual. The built-in
     /// ⌘C copies the row only when no text is selected in the field.
     private func handle(_ press: KeyPress) -> Bool {
+        if AIChat.shared.isActive { return handleInChat(press) }
         if model.menu != nil { return handleInMenu(press) }
         let modifiers = press.modifiers
         let chars = press.chars
@@ -285,6 +294,44 @@ final class LauncherController {
         if isReturn || (modifiers == .command && chars == "c") {
             // ⌘↩ without a file, ⌘C with nothing to copy.
             NSSound.beep()
+            return true
+        }
+        return false
+    }
+
+    /// Keys while a conversation with an AI account is shown. The field holds the next question.
+    private func handleInChat(_ press: KeyPress) -> Bool {
+        let chat = AIChat.shared
+        let modifiers = press.modifiers
+        let chars = press.chars
+
+        if press.keyCode == kVK_Escape {
+            // First Esc stops an answer that is arriving; the next one goes back to the search.
+            if chat.isRunning {
+                chat.stop()
+            } else {
+                chat.close()
+                model.queryChanged("")
+            }
+            return true
+        }
+        if modifiers == .command, chars == "w" { hide(); return true }
+        if press.keyCode == kVK_Return || press.keyCode == kVK_ANSI_KeypadEnter, modifiers.isEmpty {
+            if chat.isRunning || model.queryIsEmpty {
+                NSSound.beep()
+            } else {
+                chat.followUp(model.query)
+                model.queryChanged("")
+            }
+            return true
+        }
+        if modifiers == .command, chars == "c" {
+            if let editor = model.field?.currentEditor(), editor.selectedRange.length > 0 { return false }
+            if !chat.copyLast() { NSSound.beep() }
+            return true
+        }
+        if modifiers == .command, chars == "s" {
+            if !chat.saveLastImage() { NSSound.beep() }
             return true
         }
         return false
@@ -351,6 +398,10 @@ final class LauncherController {
         case .refresh:
             let index = engine.results.firstIndex { $0.id == item.id } ?? model.selectedIndex ?? 0
             model.keepSelection(at: index)
+            focusField(selectAll: false)
+        case .stay:
+            // The field is now for the next question.
+            model.queryChanged("")
             focusField(selectAll: false)
         }
     }

@@ -19,12 +19,16 @@ final class SearchEngine: ObservableObject {
         case setQuery(String)
         /// The panel stays open and shows the results of the same query again.
         case refresh
+        /// The panel stays open as it is (the action shows something in it).
+        case stay
     }
 
     /// Built-in actions (`ResultAction.perform`), registered by `AppDelegate`.
     var performers: [String: () -> Void] = [:]
     /// Actions with an argument (`ResultAction.invoke`), registered by each area at launch.
     var handlers: [String: (String) -> Void] = [:]
+    /// Handlers of `handlers` whose action shows something in the panel instead of closing it.
+    var stayOpenHandlers: Set<String> = []
     private var lastQuery = ""
     private var cachedSuggestions: [ResultItem] = []
 
@@ -34,7 +38,7 @@ final class SearchEngine: ObservableObject {
     private let maxResults = 60
 
     private init() {
-        providers = [AppsProvider(), CalculatorProvider(), CommandsProvider(), NotesProvider(),
+        providers = [AppsProvider(), CalculatorProvider(), CommandsProvider(), NotesProvider(), AIProvider(),
                      IntegrationsProvider(), FilesProvider()]
     }
 
@@ -140,6 +144,7 @@ final class SearchEngine: ObservableObject {
             DispatchQueue.main.async { [weak self] in self?.performers[id]?() }
         case .invoke(let handler, let argument):
             handlers[handler]?(argument)
+            if stayOpenHandlers.contains(handler) { return .stay }
         case .setQuery:
             break
         }

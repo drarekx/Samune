@@ -52,7 +52,9 @@ Abrir una app, encontrar un archivo o buscar en tus propios servicios sin soltar
 
 <p align="center"><img src="docs/acciones.png" width="560" alt="Menú de acciones"></p>
 
-9. En Ajustes eliges el atajo, qué se busca y configuras cada integración y las notas.
+9. Escribe el prefijo de una cuenta de IA y tu pregunta (`claude ¿qué es un mutex?`): la respuesta llega dentro del lanzador. Escribe otra pregunta para seguir la conversación; **⌘C** copia la respuesta y **esc** vuelve a la búsqueda.
+
+10. En Ajustes eliges el atajo, qué se busca y configuras cada integración y las notas.
 
 <p align="center"><img src="docs/ajustes.png" width="480" alt="Ajustes de Samune"></p>
 
@@ -70,6 +72,8 @@ Guía completa: [docs/integraciones.md](docs/integraciones.md).
 - **Acciones por fila (⌘K)**: cada resultado tiene las suyas, con atajo propio (⌘P fija una nota, ⌘⌫ la tira); las integraciones pueden declarar más.
 - **Calculadora**: operaciones, porcentajes, funciones, unidades (longitud, peso, temperatura, volumen, área, velocidad, tiempo, datos) y monedas con los tipos diarios del Banco Central Europeo.
 - **Notas**: guarda solo lo que copias dos veces seguidas, nunca lo que los gestores de contraseñas marcan como oculto. Caducan solas (7 días por defecto), se pueden fijar y pasan por una papelera. Si tenías [Notity](https://github.com/drarekx/Notity), importa sus notas la primera vez.
+- **IA**: cuentas de Anthropic, OpenAI, OpenRouter y MiniMax, cada una con su clave, su modelo y su prefijo. Duplicar una cuenta reutiliza la clave para probar otro modelo. Respuesta en directo, conversación con contexto, y debajo de cada respuesta los tokens y el coste (exacto en OpenRouter; estimado con la tarifa pública en Anthropic; solo tokens en OpenAI y MiniMax).
+- **Imágenes con IA**: «Generar una imagen» (OpenAI, OpenRouter, MiniMax; **⌘S** la guarda en Descargas) y «Preguntar con la imagen del portapapeles».
 - **Sugerencias**: con el campo vacío, las apps que más usas y las notas fijadas.
 - **Atajo global configurable**, sin permiso de Accesibilidad.
 - **Colores**: temas clásicos con sus colores oficiales (Solarized, Dracula, Nord, Gruvbox, Monokai, One Dark, Tokyo Night, Catppuccin, Rosé Pine, Everforest, Kanagawa, GitHub Dark) además del original.
@@ -83,6 +87,7 @@ Guía completa: [docs/integraciones.md](docs/integraciones.md).
 - Ajustes: `defaults read com.egluu.samune`
 - Integraciones, notas (`notes.json`), tipos de cambio y uso reciente: `~/Library/Application Support/Samune/`
 - Secretos de las integraciones: Llavero (servicio `com.egluu.samune.integrations`)
+- Claves de las cuentas de IA: Llavero (servicio `com.egluu.samune.ai`). Las preguntas no se guardan: la conversación se pierde al cerrar el panel.
 
 ## Desinstalar
 

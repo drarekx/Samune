@@ -61,11 +61,13 @@ Lanzador estilo Raycast, estudiado en clean-room (solo qué hace; ni código ni 
 | `Integrations/` | `IntegrationStore`, `IntegrationsProvider`, `IntegrationsSettingsCard`: carpetas con `manifest.json` + script que imprime JSON |
 | `Calculator/` | `CalculatorProvider` (prioridad −10, va primero), `MathParser` (parser propio; nunca `NSExpression`, que lanza excepciones), `Units`, `ExchangeRates` (BCE, caché `rates.json`) |
 | `Notes/` | Notity integrado: `NoteStore` (`notes.json`), `ClipboardWatcher` (doble ⌘C), `KeyWatcher`, `SavedBubble`, `NotesProvider` (prefijo `n `), `NotesController`, `NotesSettingsCard` |
-| `Strings/` | Una tabla de traducciones por área (`PanelStrings`, `SearchStrings`, `IntegrationsStrings`, `CalculatorStrings`, `NotesStrings`); las comunes siguen en `Localization.swift` |
+| `AI/` | Cuentas de IA: `AIStore` (cuentas en preferencias, claves en el Llavero, duplicados que comparten `keyID`), `AIClient` (Anthropic Messages y chat completions de OpenAI/OpenRouter/MiniMax por HTTP, SSE, imágenes, lista de modelos), `AIChat` (conversación del panel), `AIProvider`, `AIAnswerView`, `AISettingsCard` |
+| `Strings/` | Una tabla de traducciones por área (`PanelStrings`, `SearchStrings`, `IntegrationsStrings`, `CalculatorStrings`, `NotesStrings`, `AIStrings`); las comunes siguen en `Localization.swift` |
 
 - Un proveedor recibe el texto tal cual y devuelve `ProviderResponse`; con `exclusive = true` («f informe», «bm laravel») solo se ven sus resultados.
 - Orden: `priority` del proveedor (apps 0, comandos 5, integraciones 10, ficheros 20) y dentro, `score` (`Fuzzy.score` + `Frecency.boost`).
 - Acciones: `SearchEngine.actions(for:)` da la lista única (principal, Finder, copiar y las `ItemAction` de la fila) que usan el menú ⌘K, el pie y las teclas. Las propias de un área van con `ResultAction.invoke(handler:argument:)` y se registran en `SearchEngine.shared.handlers`; `keepsPanelOpen` deja el panel abierto y vuelve a buscar.
+- Una acción que enseña algo en el panel (la respuesta de la IA) registra su handler también en `SearchEngine.stayOpenHandlers`: el resultado es `Outcome.stay` y el campo pasa a ser la siguiente pregunta (`LauncherController.handleInChat`).
 - Campo vacío: `SearchProvider.suggestions()` de cada proveedor.
 - Cada área guarda sus ajustes en su propio `ObservableObject` sobre `UserDefaults`; no se toca `Settings.swift`.
 - Traducciones: `python3 scripts/check-translations.py` (mismas claves en `en` y `ca`, sin repetir, todo `tr()` traducido).
@@ -85,12 +87,15 @@ Lanzador estilo Raycast, estudiado en clean-room (solo qué hace; ni código ni 
 - **Runners de GitHub**: `macos-14` ya no existe. En `macos-15` el job puede quedarse en cola; relanzar con `gh run rerun <id>`.
 - **Varias copias de debug a la vez** (workers en worktrees) comparten `~/Library/Application Support/Samune` y el dominio `Samune`: aislar cada una con `CFFIXED_USER_HOME=<carpeta>` y no usar `pkill -f .build/debug/Samune` (mata las de los demás).
 - **Copia de debug y actualizador**: sin `-autoCheckUpdates NO` sale el aviso modal de «hay actualización» y la app deja de contestar al gancho. Una integración con secreto en el Llavero también la bloquea (diálogo de permiso): probar con `hola`.
+- **Un proveedor no puede tocar `SearchEngine.shared` en su `init`**: el motor crea los proveedores mientras se crea él mismo y `dispatch_once` se bloquea de forma recursiva (la app muere al arrancar). Registrar handlers en un `static func register()` llamado desde `AppDelegate`.
+- **API de Anthropic**: versión `2026-10-21`, sin `temperature`; los modelos nuevos rechazan `thinking: disabled` (no se envía `thinking`); en un seguimiento se devuelven los bloques de la respuesta tal cual llegaron (`rawContent`), no solo el texto; `fallbacks: "default"` con la beta `server-side-fallback-2026-07-01` para los modelos que pueden rechazar.
+- **Probar la IA sin gastar**: servidor falso local y `SAMUNE_AI_TEST_KEY=x .build/debug/Samune -ai.baseURL.<proveedor> http://127.0.0.1:<puerto> -ai.accounts '<hex del JSON>'` (solo debug; no toca el Llavero). `CFFIXED_USER_HOME` no aísla `UserDefaults`.
 - **Tablas de traducción por área**: una clave solo puede estar en una tabla; si dos áreas la usan («Cancelar»), va en la común de `Localization.swift` o en una sola.
 - `main.swift` envuelve el arranque en `MainActor.assumeIsolated` porque `AppDelegate` es `@MainActor`.
 
 ## Pruebas manuales
 
-- **Gancho de depuración** (solo debug): `.build/debug/Samune` y `DistributedNotificationCenter` `com.egluu.samune.debug` con objeto `panel`, `hide`, `query:<texto>` (abre el panel con ese texto), `settings`, `theme:<id>` `integrations:<texto>|<archivo>`, `calc:<texto>|<archivo>`, `notes:seed|list|pin:<i>|trash:<i>|…` o, del panel, `act.query:<texto>`, `act.actions`, `act.down`, `act.key:<esc|return|cmd+delete|text:abc>`, `act.shot:<png>`. Añadir ahí los comandos que haga falta para llevar la app a cada estado sin ratón.
+- **Gancho de depuración** (solo debug): `.build/debug/Samune` y `DistributedNotificationCenter` `com.egluu.samune.debug` con objeto `panel`, `hide`, `query:<texto>` (abre el panel con ese texto), `settings`, `theme:<id>` `integrations:<texto>|<archivo>`, `calc:<texto>|<archivo>`, `notes:seed|list|pin:<i>|trash:<i>|…` o, del panel, `act.query:<texto>`, `act.actions`, `act.down`, `act.key:<esc|return|cmd+delete|text:abc>`, `act.shot:<png>`; `ai:card:<png>` dibuja la tarjeta de IA (los controles de AppKit salen como bloques amarillos). Añadir ahí los comandos que haga falta para llevar la app a cada estado sin ratón.
 - **Capturas sin permisos**: el comando `shot:<carpeta>` del gancho guarda un PNG de cada ventana visible de la app (`cacheDisplay`). Es lo primero a usar: `screencapture -l` falla con «could not create image from window» si Terminal no tiene grabación de pantalla.
 - **El sandbox de Bash** aísla el portapapeles y otras apps (`pbcopy`, `screencapture`, Chrome headless): esas pruebas, fuera del sandbox.
 - **Capturas** (con permiso de grabación de pantalla): `screencapture -x -l <id de ventana>` saca solo la ventana, sin el escritorio. Los ids, con `CGWindowListCopyWindowInfo` filtrando por propietario `Samune`.

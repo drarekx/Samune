@@ -13,6 +13,11 @@ enum LauncherLayout {
     static let sectionHeight: CGFloat = 26
     static let cornerRadius: CGFloat = 14
 
+    /// Height of the conversation with an AI account.
+    static let answerHeight: CGFloat = 400
+
+    static func answerPanelHeight() -> CGFloat { fieldHeight + 1 + answerHeight + 1 + footerHeight }
+
     static let menuWidth: CGFloat = 340
     static let menuRowHeight: CGFloat = 32
     static let menuPadding: CGFloat = 4
@@ -100,6 +105,8 @@ final class LauncherModel: ObservableObject {
         userMoved = false
         keptIndex = nil
         menu = nil
+        // While a conversation is shown, the field holds the next question: nothing to search.
+        if AIChat.shared.isActive { return }
         SearchEngine.shared.update(query: text)
     }
 
@@ -169,6 +176,7 @@ final class LauncherModel: ObservableObject {
 struct LauncherView: View {
     @ObservedObject var model: LauncherModel
     @ObservedObject private var engine = SearchEngine.shared
+    @ObservedObject private var chat = AIChat.shared
     let onActivate: (ResultItem) -> Void
     let onAction: (RowAction, ResultItem) -> Void
 
@@ -177,7 +185,13 @@ struct LauncherView: View {
     var body: some View {
         VStack(spacing: 0) {
             header
-            if !model.queryIsEmpty || !engine.results.isEmpty {
+            if chat.isActive {
+                Rectangle().fill(Theme.line).frame(height: 1)
+                AIAnswerView(chat: chat)
+                    .frame(height: LauncherLayout.answerHeight)
+                Rectangle().fill(Theme.line).frame(height: 1)
+                chatFooter
+            } else if !model.queryIsEmpty || !engine.results.isEmpty {
                 Rectangle().fill(Theme.line).frame(height: 1)
                 ZStack(alignment: .bottomTrailing) {
                     VStack(spacing: 0) {
@@ -221,11 +235,11 @@ struct LauncherView: View {
 
     private var header: some View {
         HStack(spacing: 12) {
-            Image(systemName: "magnifyingglass")
+            Image(systemName: chat.isActive ? "sparkles" : "magnifyingglass")
                 .font(.system(size: 18, weight: .medium))
-                .foregroundStyle(Theme.text3)
+                .foregroundStyle(chat.isActive ? Theme.accentText : Theme.text3)
             LauncherSearchField(model: model)
-            if engine.isSearching {
+            if engine.isSearching && !chat.isActive {
                 ProgressView().controlSize(.small)
             }
         }
@@ -268,6 +282,34 @@ struct LauncherView: View {
                 }
                 .contentShape(Rectangle())
                 .onTapGesture { if model.menu == nil { model.openMenu() } else { model.closeMenu() } }
+            }
+        }
+        .padding(.horizontal, 18)
+        .frame(height: LauncherLayout.footerHeight)
+    }
+
+    /// Footer while a conversation is shown: its keys, the account and what it has cost so far.
+    private var chatFooter: some View {
+        let last = chat.turns.last
+        return HStack(spacing: 16) {
+            if chat.isRunning {
+                hint("esc", tr("Parar"))
+            } else {
+                if !model.queryIsEmpty { hint("↩", tr("Preguntar")) }
+                if last?.image != nil { hint("⌘S", tr("Guardar imagen")) }
+                if last.map({ !$0.text.isEmpty || $0.image != nil }) == true { hint("⌘C", tr("Copiar")) }
+                hint("esc", tr("Volver"))
+            }
+            Spacer(minLength: 0)
+            if let notice = chat.notice {
+                Text(notice).font(.system(size: 11, weight: .semibold)).foregroundStyle(Theme.ok)
+            }
+            if let account = chat.account {
+                Text(account.name).font(.system(size: 11)).foregroundStyle(Theme.text3).lineLimit(1)
+            }
+            if let cost = chat.totalCost {
+                Text(AICost.text(cost.value, estimate: cost.estimate))
+                    .font(.system(size: 11, weight: .semibold)).foregroundStyle(Theme.text2)
             }
         }
         .padding(.horizontal, 18)
@@ -444,7 +486,7 @@ struct LauncherSearchField: NSViewRepresentable {
         let font = NSFont.systemFont(ofSize: 22)
         field.textColor = NSColor(Theme.text)
         field.placeholderAttributedString = NSAttributedString(
-            string: tr("Buscar apps, archivos e integraciones…"),
+            string: AIChat.shared.isActive ? tr("Sigue preguntando…") : tr("Buscar apps, archivos e integraciones…"),
             attributes: [.foregroundColor: NSColor(Theme.text3), .font: font])
     }
 

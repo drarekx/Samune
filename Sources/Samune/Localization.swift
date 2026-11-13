@@ -61,9 +61,9 @@ func tr(_ key: String, _ args: CVarArg...) -> String {
 
 private enum Translations {
     /// Common strings below plus one table per area (`Strings/Strings+*.swift`).
-    static let allEn = [PanelStrings.en, SearchStrings.en, IntegrationsStrings.en, CalculatorStrings.en, NotesStrings.en]
+    static let allEn = [PanelStrings.en, SearchStrings.en, IntegrationsStrings.en, CalculatorStrings.en, NotesStrings.en, AIStrings.en]
         .reduce(en) { $0.merging($1) { first, _ in first } }
-    static let allCa = [PanelStrings.ca, SearchStrings.ca, IntegrationsStrings.ca, CalculatorStrings.ca, NotesStrings.ca]
+    static let allCa = [PanelStrings.ca, SearchStrings.ca, IntegrationsStrings.ca, CalculatorStrings.ca, NotesStrings.ca, AIStrings.ca]
         .reduce(ca) { $0.merging($1) { first, _ in first } }
 
     static let en: [String: String] = [
