@@ -38,7 +38,21 @@ Abrir una app, encontrar un archivo o buscar en tus propios servicios sin soltar
 
 <p align="center"><img src="docs/comandos.png" width="560" alt="Comandos de Samune"></p>
 
-5. En Ajustes eliges el atajo, qué se busca y configuras cada integración.
+5. Con el campo vacío salen las apps que más usas y tus notas fijadas.
+
+<p align="center"><img src="docs/sugerencias.png" width="560" alt="Sugerencias con el campo vacío"></p>
+
+6. Escribe una cuenta o una conversión (`23*4+10%`, `10 km a mi`, `120 eur a usd`) y **↩** copia el resultado.
+
+<p align="center"><img src="docs/calculadora.png" width="560" alt="Calculadora"></p>
+
+7. Copia un texto **dos veces seguidas** (⌘C ⌘C) y queda guardado como nota. Escribe `n ` para verlas; **↩** la devuelve al portapapeles.
+
+8. **⌘K** abre las acciones de la fila elegida: mostrar en el Finder, copiar, fijar o tirar una nota… Escribe para filtrarlas.
+
+<p align="center"><img src="docs/acciones.png" width="560" alt="Menú de acciones"></p>
+
+9. En Ajustes eliges el atajo, qué se busca y configuras cada integración y las notas.
 
 <p align="center"><img src="docs/ajustes.png" width="480" alt="Ajustes de Samune"></p>
 
@@ -53,6 +67,10 @@ Guía completa: [docs/integraciones.md](docs/integraciones.md).
 - **Apps y Ajustes del sistema**: coincidencia aproximada (iniciales, trozos de palabra) y orden según lo que más abres.
 - **Archivos y carpetas**: con Spotlight, sin permisos extra; no muestra lo que hay dentro de `node_modules`, `build`, cachés ni carpetas ocultas.
 - **Integraciones con scripts**: prefijo configurable (con o sin espacio), variables y secretos por integración, caché de resultados.
+- **Acciones por fila (⌘K)**: cada resultado tiene las suyas, con atajo propio (⌘P fija una nota, ⌘⌫ la tira); las integraciones pueden declarar más.
+- **Calculadora**: operaciones, porcentajes, funciones, unidades (longitud, peso, temperatura, volumen, área, velocidad, tiempo, datos) y monedas con los tipos diarios del Banco Central Europeo.
+- **Notas**: guarda solo lo que copias dos veces seguidas, nunca lo que los gestores de contraseñas marcan como oculto. Caducan solas (7 días por defecto), se pueden fijar y pasan por una papelera. Si tenías [Notity](https://github.com/drarekx/Notity), importa sus notas la primera vez.
+- **Sugerencias**: con el campo vacío, las apps que más usas y las notas fijadas.
 - **Atajo global configurable**, sin permiso de Accesibilidad.
 - **Colores**: temas clásicos con sus colores oficiales (Solarized, Dracula, Nord, Gruvbox, Monokai, One Dark, Tokyo Night, Catppuccin, Rosé Pine, Everforest, Kanagawa, GitHub Dark) además del original.
 - **Idiomas**: castellano, inglés y catalán.
@@ -63,7 +81,7 @@ Guía completa: [docs/integraciones.md](docs/integraciones.md).
 ## Dónde guarda las cosas
 
 - Ajustes: `defaults read com.egluu.samune`
-- Integraciones y uso reciente: `~/Library/Application Support/Samune/`
+- Integraciones, notas (`notes.json`), tipos de cambio y uso reciente: `~/Library/Application Support/Samune/`
 - Secretos de las integraciones: Llavero (servicio `com.egluu.samune.integrations`)
 
 ## Desinstalar

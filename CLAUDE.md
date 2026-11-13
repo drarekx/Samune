@@ -59,10 +59,14 @@ Lanzador estilo Raycast, estudiado en clean-room (solo qué hace; ni código ni 
 | `Panel/` | `LauncherController` (panel flotante + atajo global configurable) y `HotkeySettingsCard` |
 | `Providers/` | `AppsProvider` (apps y paneles de Ajustes), `FilesProvider` (Spotlight; prefijo `f `), `SearchSettingsCard` |
 | `Integrations/` | `IntegrationStore`, `IntegrationsProvider`, `IntegrationsSettingsCard`: carpetas con `manifest.json` + script que imprime JSON |
-| `Strings/` | Una tabla de traducciones por área (`PanelStrings`, `SearchStrings`, `IntegrationsStrings`); las comunes siguen en `Localization.swift` |
+| `Calculator/` | `CalculatorProvider` (prioridad −10, va primero), `MathParser` (parser propio; nunca `NSExpression`, que lanza excepciones), `Units`, `ExchangeRates` (BCE, caché `rates.json`) |
+| `Notes/` | Notity integrado: `NoteStore` (`notes.json`), `ClipboardWatcher` (doble ⌘C), `KeyWatcher`, `SavedBubble`, `NotesProvider` (prefijo `n `), `NotesController`, `NotesSettingsCard` |
+| `Strings/` | Una tabla de traducciones por área (`PanelStrings`, `SearchStrings`, `IntegrationsStrings`, `CalculatorStrings`, `NotesStrings`); las comunes siguen en `Localization.swift` |
 
 - Un proveedor recibe el texto tal cual y devuelve `ProviderResponse`; con `exclusive = true` («f informe», «bm laravel») solo se ven sus resultados.
 - Orden: `priority` del proveedor (apps 0, comandos 5, integraciones 10, ficheros 20) y dentro, `score` (`Fuzzy.score` + `Frecency.boost`).
+- Acciones: `SearchEngine.actions(for:)` da la lista única (principal, Finder, copiar y las `ItemAction` de la fila) que usan el menú ⌘K, el pie y las teclas. Las propias de un área van con `ResultAction.invoke(handler:argument:)` y se registran en `SearchEngine.shared.handlers`; `keepsPanelOpen` deja el panel abierto y vuelve a buscar.
+- Campo vacío: `SearchProvider.suggestions()` de cada proveedor.
 - Cada área guarda sus ajustes en su propio `ObservableObject` sobre `UserDefaults`; no se toca `Settings.swift`.
 - Traducciones: `python3 scripts/check-translations.py` (mismas claves en `en` y `ca`, sin repetir, todo `tr()` traducido).
 
@@ -80,12 +84,13 @@ Lanzador estilo Raycast, estudiado en clean-room (solo qué hace; ni código ni 
 - Builds universales (`--arch arm64 --arch x86_64`) necesitan Xcode completo; `build-app.sh` cae a la arquitectura nativa con solo CLT.
 - **Runners de GitHub**: `macos-14` ya no existe. En `macos-15` el job puede quedarse en cola; relanzar con `gh run rerun <id>`.
 - **Varias copias de debug a la vez** (workers en worktrees) comparten `~/Library/Application Support/Samune` y el dominio `Samune`: aislar cada una con `CFFIXED_USER_HOME=<carpeta>` y no usar `pkill -f .build/debug/Samune` (mata las de los demás).
+- **Copia de debug y actualizador**: sin `-autoCheckUpdates NO` sale el aviso modal de «hay actualización» y la app deja de contestar al gancho. Una integración con secreto en el Llavero también la bloquea (diálogo de permiso): probar con `hola`.
 - **Tablas de traducción por área**: una clave solo puede estar en una tabla; si dos áreas la usan («Cancelar»), va en la común de `Localization.swift` o en una sola.
 - `main.swift` envuelve el arranque en `MainActor.assumeIsolated` porque `AppDelegate` es `@MainActor`.
 
 ## Pruebas manuales
 
-- **Gancho de depuración** (solo debug): `.build/debug/Samune` y `DistributedNotificationCenter` `com.egluu.samune.debug` con objeto `panel`, `hide`, `query:<texto>` (abre el panel con ese texto), `settings`, `theme:<id>` o `integrations:<texto>|<archivo>`. Añadir ahí los comandos que haga falta para llevar la app a cada estado sin ratón.
+- **Gancho de depuración** (solo debug): `.build/debug/Samune` y `DistributedNotificationCenter` `com.egluu.samune.debug` con objeto `panel`, `hide`, `query:<texto>` (abre el panel con ese texto), `settings`, `theme:<id>` `integrations:<texto>|<archivo>`, `calc:<texto>|<archivo>`, `notes:seed|list|pin:<i>|trash:<i>|…` o, del panel, `act.query:<texto>`, `act.actions`, `act.down`, `act.key:<esc|return|cmd+delete|text:abc>`, `act.shot:<png>`. Añadir ahí los comandos que haga falta para llevar la app a cada estado sin ratón.
 - **Capturas sin permisos**: el comando `shot:<carpeta>` del gancho guarda un PNG de cada ventana visible de la app (`cacheDisplay`). Es lo primero a usar: `screencapture -l` falla con «could not create image from window» si Terminal no tiene grabación de pantalla.
 - **El sandbox de Bash** aísla el portapapeles y otras apps (`pbcopy`, `screencapture`, Chrome headless): esas pruebas, fuera del sandbox.
 - **Capturas** (con permiso de grabación de pantalla): `screencapture -x -l <id de ventana>` saca solo la ventana, sin el escritorio. Los ids, con `CGWindowListCopyWindowInfo` filtrando por propietario `Samune`.
