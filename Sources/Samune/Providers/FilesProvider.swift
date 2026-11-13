@@ -70,6 +70,10 @@ enum FileRanking {
     private static let skippedFolders: Set<String> = [
         "node_modules", ".git", ".build", "vendor", "Caches", "DerivedData", "Pods", "__pycache__", ".Trash",
     ]
+    /// Build output and cache folders: the folder itself may show, what is inside never does.
+    private static let outputFolders: Set<String> = [
+        "build", "dist", "out", "target", "cache", "caches", "compiled", "coverage", "tmp", "temp",
+    ]
     /// Bundles whose insides never show up.
     private static let packageExtensions: Set<String> = ["app", "framework", "bundle", "photoslibrary", "appex"]
 
@@ -95,9 +99,11 @@ enum FileRanking {
         let components = (path as NSString).pathComponents
         for (index, component) in components.enumerated() where index > 0 {
             if component.hasPrefix(".") || skippedFolders.contains(component) { return true }
-            // Inside a bundle (but the bundle itself may show, e.g. a .bundle document).
+            // Inside a bundle (but the bundle itself may show, e.g. a .bundle document),
+            // or inside a build output or cache folder.
             if index < components.count - 1,
-               packageExtensions.contains((component as NSString).pathExtension.lowercased()) {
+               packageExtensions.contains((component as NSString).pathExtension.lowercased())
+                || outputFolders.contains(component.lowercased()) {
                 return true
             }
         }
