@@ -39,6 +39,16 @@ final class Frecency {
         return 0.5 * frequency * (0.4 + 0.6 * recency)
     }
 
+    /// Ids starting with `prefix` ("app:"), most boosted first, with their boost. Empty without history.
+    func top(prefix: String, limit: Int) -> [(id: String, boost: Double)] {
+        entries.keys
+            .filter { $0.hasPrefix(prefix) }
+            .map { (id: $0, boost: boost($0)) }
+            .sorted { $0.boost != $1.boost ? $0.boost > $1.boost : $0.id < $1.id }
+            .prefix(limit)
+            .map { $0 }
+    }
+
     private func save() {
         // Keep the file small: the 500 most recently used.
         if entries.count > 600 {

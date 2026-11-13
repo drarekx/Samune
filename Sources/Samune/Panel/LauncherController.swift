@@ -46,6 +46,15 @@ final class LauncherController {
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in self?.resize() }
             .store(in: &cancellables)
+        model.$menu
+            .map { $0?.all.count }
+            .removeDuplicates()
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in self?.resize() }
+            .store(in: &cancellables)
+        installDebugCommands()
+        // Suggestions ready for the first time the panel opens.
+        model.queryChanged("")
 
         NotificationCenter.default.addObserver(forName: NSWindow.didResignKeyNotification, object: panel,
                                                queue: .main) { [weak self] _ in
@@ -132,7 +141,9 @@ final class LauncherController {
         container.autoresizingMask = [.width, .height]
 
         let root = ThemedRoot { [model, weak self] in
-            LauncherView(model: model) { [weak self] item in self?.activate(item) }
+            LauncherView(model: model,
+                         onActivate: { [weak self] item in self?.activate(item) },
+                         onAction: { [weak self] action, item in self?.run(action, on: item) })
         }
         // Autoresizing and no Auto Layout: constraints would make the window obey SwiftUI's minimum size.
         let hosting = NSHostingView(rootView: AnyView(root))
@@ -160,7 +171,8 @@ final class LauncherController {
     }
 
     private var currentHeight: CGFloat {
-        LauncherLayout.height(queryIsEmpty: model.queryIsEmpty, rows: engine.results.count)
+        LauncherLayout.height(queryIsEmpty: model.queryIsEmpty, rows: engine.results.count,
+                              menuRows: model.menu?.all.count)
     }
 
     /// Grows or shrinks the panel downwards, keeping its top edge in place. No animation:
@@ -191,7 +203,8 @@ final class LauncherController {
             // NSEvent is not Sendable: hand plain values to the main actor.
             let press = KeyPress(window: event.windowNumber, keyCode: Int(event.keyCode),
                                  modifiers: event.modifierFlags.intersection([.command, .option, .control, .shift]),
-                                 chars: event.charactersIgnoringModifiers?.lowercased())
+                                 chars: event.charactersIgnoringModifiers?.lowercased(),
+                                 text: event.characters)
             let handled = MainActor.assumeIsolated { () -> Bool in
                 guard let self, self.isShown, press.window == self.panel?.windowNumber else { return false }
                 return self.handle(press)
@@ -205,15 +218,39 @@ final class LauncherController {
         let keyCode: Int
         let modifiers: NSEvent.ModifierFlags
         let chars: String?
+        /// Typed text, with Shift and Option applied (for the menu filter).
+        let text: String?
+
+        func matches(_ shortcut: KeyShortcut) -> Bool {
+            var wanted: NSEvent.ModifierFlags = []
+            if shortcut.command { wanted.insert(.command) }
+            if shortcut.shift { wanted.insert(.shift) }
+            if shortcut.option { wanted.insert(.option) }
+            if shortcut.control { wanted.insert(.control) }
+            guard modifiers == wanted else { return false }
+            switch shortcut.key {
+            case "delete": return keyCode == kVK_Delete || keyCode == kVK_ForwardDelete
+            case "return": return keyCode == kVK_Return || keyCode == kVK_ANSI_KeypadEnter
+            default: return chars == shortcut.key.lowercased()
+            }
+        }
     }
 
     /// Keys of the panel. True when handled (the event is swallowed).
+    ///
+    /// Shortcut rule: a row's own actions (`item.actions`) win over text editing, but only when the
+    /// selected row declares that shortcut; otherwise the key edits the field as usual. The built-in
+    /// ⌘C copies the row only when no text is selected in the field.
     private func handle(_ press: KeyPress) -> Bool {
+        if model.menu != nil { return handleInMenu(press) }
         let modifiers = press.modifiers
-        let key = press.keyCode
         let chars = press.chars
 
-        switch key {
+        if modifiers == .command, chars == "k" {
+            if !model.openMenu() { NSSound.beep() }
+            return true
+        }
+        switch press.keyCode {
         case kVK_Escape:
             hide()
             return true
@@ -223,40 +260,152 @@ final class LauncherController {
         case kVK_UpArrow:
             model.move(-1)
             return true
-        case kVK_Return, kVK_ANSI_KeypadEnter:
-            guard let item = model.selectedItem else { return true }
-            if modifiers == .command {
-                if engine.reveal(item) { hide() } else { NSSound.beep() }
-            } else {
-                activate(item)
-            }
-            return true
         default:
             break
         }
-
         if modifiers == .control, chars == "n" { model.move(1); return true }
         if modifiers == .control, chars == "p" { model.move(-1); return true }
         if modifiers == .command, chars == "w" { hide(); return true }
-        if modifiers == .command, chars == "c" {
-            // Selected text in the field copies as usual; otherwise ⌘C copies the row.
-            if let editor = model.field?.currentEditor(), editor.selectedRange.length > 0 { return false }
-            guard let item = model.selectedItem else { return false }
-            if engine.copyText(of: item) { hide() } else { NSSound.beep() }
+
+        let isReturn = press.keyCode == kVK_Return || press.keyCode == kVK_ANSI_KeypadEnter
+        guard let item = model.selectedItem else { return isReturn }
+        let actions = engine.actions(for: item)
+        if let action = actions.first(where: { $0.isExtra && $0.shortcut.map(press.matches) == true }) {
+            run(action, on: item)
+            return true
+        }
+        if modifiers == .command, chars == "c",
+           let editor = model.field?.currentEditor(), editor.selectedRange.length > 0 {
+            return false
+        }
+        if let action = actions.first(where: { !$0.isExtra && $0.shortcut.map(press.matches) == true }) {
+            run(action, on: item)
+            return true
+        }
+        if isReturn || (modifiers == .command && chars == "c") {
+            // ⌘↩ without a file, ⌘C with nothing to copy.
+            NSSound.beep()
             return true
         }
         return false
     }
 
+    /// Keys while the actions menu is open: they never reach the search field.
+    private func handleInMenu(_ press: KeyPress) -> Bool {
+        guard let menu = model.menu else { return false }
+        let modifiers = press.modifiers
+        let chars = press.chars
+
+        if press.keyCode == kVK_Escape || (modifiers == .command && chars == "k") {
+            model.closeMenu()
+            return true
+        }
+        if modifiers == .command, chars == "w" { hide(); return true }
+        switch press.keyCode {
+        case kVK_DownArrow: model.moveInMenu(1); return true
+        case kVK_UpArrow: model.moveInMenu(-1); return true
+        default: break
+        }
+        if press.keyCode == kVK_Return || press.keyCode == kVK_ANSI_KeypadEnter, modifiers.isEmpty {
+            if let action = menu.selectedAction { run(action, on: menu.item) } else { NSSound.beep() }
+            return true
+        }
+        if modifiers == .control, chars == "n" { model.moveInMenu(1); return true }
+        if modifiers == .control, chars == "p" { model.moveInMenu(-1); return true }
+        // Shortcuts of the listed actions work inside the menu too (before ⌫ edits the filter).
+        if !modifiers.isEmpty, modifiers != .shift,
+           let action = menu.all.first(where: { $0.shortcut.map(press.matches) == true }) {
+            run(action, on: menu.item)
+            return true
+        }
+        if press.keyCode == kVK_Delete {
+            model.setMenuFilter(modifiers.isEmpty ? String(menu.filter.dropLast()) : "")
+            return true
+        }
+        if modifiers.isDisjoint(with: [.command, .control]), let text = press.text,
+           !text.isEmpty, text.unicodeScalars.allSatisfy({ !CharacterSet.controlCharacters.contains($0) }),
+           !(text.unicodeScalars.first.map { (0xF700...0xF8FF).contains($0.value) } ?? false) {
+            model.setMenuFilter(menu.filter + text)
+            return true
+        }
+        // Other keys (⌘V, function keys…) do nothing while the menu is open.
+        return modifiers.isDisjoint(with: [.command])
+    }
+
     private func activate(_ item: ResultItem) {
-        switch engine.activate(item) {
+        apply(engine.activate(item), from: item)
+    }
+
+    /// An entry of the actions menu, or its shortcut.
+    private func run(_ action: RowAction, on item: ResultItem) {
+        apply(engine.perform(action, on: item), from: item)
+    }
+
+    private func apply(_ outcome: SearchEngine.Outcome, from item: ResultItem) {
+        switch outcome {
         case .close:
             hide()
         case .setQuery(let text):
             model.queryChanged(text)
             focusField(selectAll: false)
         case .refresh:
-            break
+            let index = engine.results.firstIndex { $0.id == item.id } ?? model.selectedIndex ?? 0
+            model.keepSelection(at: index)
+            focusField(selectAll: false)
         }
+    }
+
+    // MARK: - Debug
+
+    /// Debug builds only: extra commands of the `com.egluu.samune.debug` hook for this area:
+    /// `actions` opens the actions menu for the selected row, `actions:<text>` also types a filter.
+    /// With the `act.` prefix (`act.query:<text>`, `act.actions`, `act.down`, `act.shot:<file.png>`)
+    /// only builds that know them answer, so copies running in other worktrees stay out of the way.
+    private func installDebugCommands() {
+        #if DEBUG
+        DistributedNotificationCenter.default().addObserver(forName: Notification.Name("com.egluu.samune.debug"),
+                                                            object: nil, queue: .main) { [weak self] note in
+            guard var command = note.object as? String else { return }
+            if command.hasPrefix("act.") { command.removeFirst(4) }
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                if command.hasPrefix("query:"), note.object as? String != command {
+                    self.setQuery(String(command.dropFirst(6)))
+                } else if command == "actions" || command.hasPrefix("actions:") {
+                    guard self.isShown else { return }
+                    if self.model.menu == nil { self.model.openMenu() }
+                    if command.hasPrefix("actions:") { self.model.setMenuFilter(String(command.dropFirst(8))) }
+                } else if command == "down", note.object as? String != command {
+                    if self.model.menu == nil { self.model.move(1) } else { self.model.moveInMenu(1) }
+                } else if command.hasPrefix("key:"), note.object as? String != command, self.isShown {
+                    // Simulated key presses: "esc", "down", "up", "return", "delete", "cmd+k", "text:abc".
+                    let spec = String(command.dropFirst(4))
+                    let window = self.panel?.windowNumber ?? 0
+                    if spec.hasPrefix("text:") {
+                        for char in spec.dropFirst(5) {
+                            _ = self.handle(KeyPress(window: window, keyCode: -1, modifiers: [],
+                                                     chars: String(char).lowercased(), text: String(char)))
+                        }
+                        return
+                    }
+                    let codes = ["esc": kVK_Escape, "down": kVK_DownArrow, "up": kVK_UpArrow,
+                                 "return": kVK_Return, "delete": kVK_Delete, "k": kVK_ANSI_K]
+                    let parts = spec.split(separator: "+").map(String.init)
+                    guard let key = parts.last, let code = codes[key] else { return }
+                    let modifiers: NSEvent.ModifierFlags = parts.contains("cmd") ? .command : []
+                    let handled = self.handle(KeyPress(window: window, keyCode: code, modifiers: modifiers,
+                                                       chars: key.count == 1 ? key : nil, text: nil))
+                    NSLog("act.key %@ handled=%d menu=%d shown=%d", spec, handled ? 1 : 0,
+                          self.model.menu == nil ? 0 : 1, self.isShown ? 1 : 0)
+                } else if command.hasPrefix("shot:"), note.object as? String != command,
+                          let view = self.panel?.contentView,
+                          let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) {
+                    view.cacheDisplay(in: view.bounds, to: rep)
+                    try? rep.representation(using: .png, properties: [:])?
+                        .write(to: URL(fileURLWithPath: String(command.dropFirst(5))))
+                }
+            }
+        }
+        #endif
     }
 }
