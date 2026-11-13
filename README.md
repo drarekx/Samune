@@ -20,16 +20,40 @@ Requisitos: macOS 14 (Sonoma) o posterior. Apple Silicon o Intel.
 
 ## Para qué sirve
 
-<!-- El problema que resuelve, en dos o tres frases. -->
+Abrir una app, encontrar un archivo o buscar en tus propios servicios sin soltar el teclado. Pulsas un atajo desde cualquier app, escribes unas letras y ↩. Las integraciones son scripts tuyos: cualquier cosa que sepa imprimir JSON se puede listar en Samune.
 
 ## Cómo funciona
 
-<!-- Pasos numerados, cada uno con su captura:
-<p align="center"><img src="docs/main.png" width="560" alt="…"></p>
--->
+1. Pulsa **⌥Espacio** (se cambia en Ajustes → Atajo) y escribe. Salen apps y paneles de Ajustes del sistema; lo que más usas sube en la lista.
+
+<p align="center"><img src="docs/apps.png" width="560" alt="Búsqueda de apps"></p>
+
+2. A partir de tres letras aparecen también archivos y carpetas (Spotlight). Escribe `f ` delante para buscar solo archivos. **↩** abre, **⌘↩** muestra en Finder, **⌘C** copia la ruta, **esc** cierra.
+
+3. Escribe la palabra clave de una integración y un espacio (`hola `, `bm laravel`) para listar su contenido.
+
+<p align="center"><img src="docs/integracion.png" width="560" alt="Resultados de una integración"></p>
+
+4. Samune también tiene sus propios comandos: ajustes, recargar integraciones, salir…
+
+<p align="center"><img src="docs/comandos.png" width="560" alt="Comandos de Samune"></p>
+
+5. En Ajustes eliges el atajo, qué se busca y configuras cada integración.
+
+<p align="center"><img src="docs/ajustes.png" width="480" alt="Ajustes de Samune"></p>
+
+## Integraciones
+
+Una integración es una carpeta en `~/Library/Application Support/Samune/Integrations/` con un `manifest.json` y un script (bash, node, python, php…) que imprime JSON con los elementos a listar. Se crean desde Ajustes → Integraciones → **Nueva integración…**, sin recompilar. Las claves secretas se guardan en el Llavero. Vienen dos de ejemplo: `hola` (plantilla comentada) y `bookmarks` (busca en un servidor propio por HTTP).
+
+Guía completa: [docs/integraciones.md](docs/integraciones.md).
 
 ## Todo lo que hace
 
+- **Apps y Ajustes del sistema**: coincidencia aproximada (iniciales, trozos de palabra) y orden según lo que más abres.
+- **Archivos y carpetas**: con Spotlight, sin permisos extra; no muestra lo que hay dentro de `node_modules`, `build`, cachés ni carpetas ocultas.
+- **Integraciones con scripts**: palabra clave propia, variables y secretos por integración, caché de resultados.
+- **Atajo global configurable**, sin permiso de Accesibilidad.
 - **Colores**: temas clásicos con sus colores oficiales (Solarized, Dracula, Nord, Gruvbox, Monokai, One Dark, Tokyo Night, Catppuccin, Rosé Pine, Everforest, Kanagawa, GitHub Dark) además del original.
 - **Idiomas**: castellano, inglés y catalán.
 - **Abrir al iniciar sesión**: se activa la primera vez que se abre desde Aplicaciones; se puede quitar en Ajustes.
@@ -39,6 +63,8 @@ Requisitos: macOS 14 (Sonoma) o posterior. Apple Silicon o Intel.
 ## Dónde guarda las cosas
 
 - Ajustes: `defaults read com.egluu.samune`
+- Integraciones y uso reciente: `~/Library/Application Support/Samune/`
+- Secretos de las integraciones: Llavero (servicio `com.egluu.samune.integrations`)
 
 ## Desinstalar
 
