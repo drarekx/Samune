@@ -187,7 +187,10 @@ function run(argv) {
       subtitle: [host, tags].filter(Boolean).join(' · '),
       icon: 'sf:bookmark',
       action: { type: 'open', value: b.url },
-      copy: b.url
+      copy: b.url,
+      actions: [
+        { title: 'Copiar como Markdown', icon: 'doc.on.doc', type: 'copy', value: '[' + (b.title || b.url) + '](' + b.url + ')' }
+      ]
     }
   })
   return JSON.stringify({ items: items })

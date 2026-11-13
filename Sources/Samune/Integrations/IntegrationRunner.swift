@@ -8,6 +8,17 @@ struct ScriptItem: Sendable, Equatable {
     var actionType: String?
     var actionValue: String?
     var copy: String?
+    /// Extra actions for the actions menu (⌘K).
+    var actions: [ScriptAction] = []
+}
+
+/// One entry of `actions` in a script item.
+struct ScriptAction: Sendable, Equatable {
+    var title: String
+    /// SF Symbol name, with or without the `sf:` prefix.
+    var icon: String?
+    var type: String
+    var value: String
 }
 
 /// What running a script gave.
@@ -80,6 +91,12 @@ enum IntegrationRunner {
         if let action = dict["action"] as? [String: Any] {
             item.actionType = text(action["type"])?.lowercased()
             item.actionValue = text(action["value"])
+        }
+        item.actions = (dict["actions"] as? [Any] ?? []).prefix(12).compactMap { entry in
+            guard let action = entry as? [String: Any], let title = text(action["title"]),
+                  let type = text(action["type"])?.lowercased(), ["open", "copy", "run"].contains(type),
+                  let value = text(action["value"]) else { return nil }
+            return ScriptAction(title: title, icon: text(action["icon"]), type: type, value: value)
         }
         return item
     }

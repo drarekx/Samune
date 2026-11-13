@@ -80,7 +80,10 @@ Un objeto JSON por la salida estándar:
       "subtitle": "laravel.com · #laravel, #php",
       "icon": "sf:bookmark",
       "action": { "type": "open", "value": "https://laravel.com/docs/eloquent" },
-      "copy": "https://laravel.com/docs/eloquent"
+      "copy": "https://laravel.com/docs/eloquent",
+      "actions": [
+        { "title": "Copiar como Markdown", "icon": "doc.on.doc", "type": "copy", "value": "[Eloquent ORM](https://laravel.com/docs/eloquent)" }
+      ]
     }
   ]
 }
@@ -95,6 +98,7 @@ Un objeto JSON por la salida estándar:
   - `run`: ejecuta `value` con `/bin/zsh -lc` desde la carpeta de la integración.
   - Sin acción, ↩ copia `copy` o, si no hay, el título.
 - `copy`: texto que copia ⌘C (por defecto, la URL o la ruta de la acción).
+- `actions`: acciones extra, opcionales, que salen en el menú de acciones (⌘K) después de las de siempre. Cada una lleva `title`, `type` y `value` (los mismos tipos que `action`) y, si quieres, `icon` (nombre de un SF Symbol). Como mucho 12.
 
 Con `passQuery: true` los elementos se enseñan en el orden en que los imprimes; con `false`, ordenados por cómo encajan con lo escrito y por lo que más usas. Como mucho se muestran 50.
 

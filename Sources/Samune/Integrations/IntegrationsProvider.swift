@@ -88,27 +88,38 @@ final class IntegrationsProvider: SearchProvider {
 
     private func resultItem(_ item: ScriptItem, integration: Integration, score: Double) -> ResultItem {
         let folder = integration.folder
+        let action = Self.action(type: item.actionType, value: item.actionValue, folder: folder)
+            ?? .copy(item.copy ?? item.title)
         var fileURL: URL?
-        let action: ResultAction
-        switch (item.actionType, item.actionValue) {
-        case ("open", let value?):
-            if let url = Self.openURL(value, folder: folder) {
-                action = .open(url)
-                if url.isFileURL { fileURL = url }
-            } else {
-                action = .copy(value)
-            }
-        case ("copy", let value?):
-            action = .copy(value)
-        case ("run", let value?):
-            action = .run(command: value, directory: folder)
-        default:
-            action = .copy(item.copy ?? item.title)
+        if case .open(let url) = action, url.isFileURL { fileURL = url }
+        let extras = item.actions.enumerated().compactMap { index, extra -> ItemAction? in
+            guard let action = Self.action(type: extra.type, value: extra.value, folder: folder) else { return nil }
+            let symbol = extra.icon.map { $0.hasPrefix("sf:") ? String($0.dropFirst(3)) : $0 }
+            return ItemAction(id: "script\(index)", title: extra.title,
+                              symbol: symbol ?? Self.defaultSymbol(for: action), action: action)
         }
         let key = item.actionValue ?? item.title
         return ResultItem(id: "int:\(integration.id):\(key)", title: item.title, subtitle: item.subtitle,
                           icon: icon(item.icon, integration: integration), kind: integration.name,
-                          action: action, score: score, fileURL: fileURL, copyText: item.copy)
+                          action: action, score: score, fileURL: fileURL, copyText: item.copy, actions: extras)
+    }
+
+    /// `open`, `copy` or `run` with its value; nil for anything else.
+    private static func action(type: String?, value: String?, folder: URL) -> ResultAction? {
+        switch (type, value) {
+        case ("open", let value?): return openURL(value, folder: folder).map(ResultAction.open) ?? .copy(value)
+        case ("copy", let value?): return .copy(value)
+        case ("run", let value?): return .run(command: value, directory: folder)
+        default: return nil
+        }
+    }
+
+    private static func defaultSymbol(for action: ResultAction) -> String {
+        switch action {
+        case .open: return "arrow.up.forward.square"
+        case .copy: return "doc.on.doc"
+        default: return "terminal"
+        }
     }
 
     /// Web URL, `file://` URL, or a path (absolute, `~/…` or relative to the integration folder).
