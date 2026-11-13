@@ -30,7 +30,7 @@ Abrir una app, encontrar un archivo o buscar en tus propios servicios sin soltar
 
 2. A partir de tres letras aparecen también archivos y carpetas (Spotlight). Escribe `f ` delante para buscar solo archivos. **↩** abre, **⌘↩** muestra en Finder, **⌘C** copia la ruta, **esc** cierra.
 
-3. Escribe la palabra clave de una integración y un espacio (`hola `, `bm laravel`) para listar su contenido.
+3. Escribe el prefijo de una integración (`hola `, `bm laravel`) para listar su contenido. En Ajustes eliges el prefijo de cada una y si lleva un espacio detrás (`!laravel`).
 
 <p align="center"><img src="docs/integracion.png" width="560" alt="Resultados de una integración"></p>
 
@@ -52,7 +52,7 @@ Guía completa: [docs/integraciones.md](docs/integraciones.md).
 
 - **Apps y Ajustes del sistema**: coincidencia aproximada (iniciales, trozos de palabra) y orden según lo que más abres.
 - **Archivos y carpetas**: con Spotlight, sin permisos extra; no muestra lo que hay dentro de `node_modules`, `build`, cachés ni carpetas ocultas.
-- **Integraciones con scripts**: palabra clave propia, variables y secretos por integración, caché de resultados.
+- **Integraciones con scripts**: prefijo configurable (con o sin espacio), variables y secretos por integración, caché de resultados.
 - **Atajo global configurable**, sin permiso de Accesibilidad.
 - **Colores**: temas clásicos con sus colores oficiales (Solarized, Dracula, Nord, Gruvbox, Monokai, One Dark, Tokyo Night, Catppuccin, Rosé Pine, Everforest, Kanagawa, GitHub Dark) además del original.
 - **Idiomas**: castellano, inglés y catalán.

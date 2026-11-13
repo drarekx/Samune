@@ -12,8 +12,17 @@ final class IntegrationStore: ObservableObject {
     /// Ids switched off in Settings (`integrations.disabled`).
     @Published private(set) var disabled: Set<String>
 
+    /// Prefixes typed in Settings, by integration id (`integrations.prefixes`). They replace the manifest keyword.
+    @Published private(set) var prefixes: [String: String]
+    /// Whether a space must follow the prefix, when chosen in Settings (`integrations.prefixSpace`).
+    @Published private(set) var prefixSpace: [String: Bool]
+
+    /// What `scan()` found, before checking prefixes.
+    private var scanned: [Integration] = []
     private let defaults = UserDefaults.standard
     private static let disabledKey = "integrations.disabled"
+    private static let prefixesKey = "integrations.prefixes"
+    private static let prefixSpaceKey = "integrations.prefixSpace"
     private static let examplesKey = "integrations.examplesInstalled"
 
     private struct CacheEntry {
@@ -28,6 +37,8 @@ final class IntegrationStore: ObservableObject {
 
     private init() {
         disabled = Set(UserDefaults.standard.stringArray(forKey: Self.disabledKey) ?? [])
+        prefixes = UserDefaults.standard.dictionary(forKey: Self.prefixesKey) as? [String: String] ?? [:]
+        prefixSpace = UserDefaults.standard.dictionary(forKey: Self.prefixSpaceKey) as? [String: Bool] ?? [:]
     }
 
     /// Installs the bundled examples the first time and loads the manifests. Called once at launch.
@@ -88,6 +99,55 @@ final class IntegrationStore: ObservableObject {
         integrations.filter { $0.isUsable && isEnabled($0.id) }
     }
 
+    // MARK: - Prefix
+
+    /// What is typed to enter the integration: the one set in Settings, or the manifest keyword.
+    func prefix(of integration: Integration) -> String {
+        prefixes[integration.id] ?? integration.manifest?.keyword ?? ""
+    }
+
+    /// True when a space must follow the prefix ("bm laravel"); false for "!laravel".
+    func needsSpace(_ integration: Integration) -> Bool {
+        prefixSpace[integration.id] ?? integration.manifest?.keywordSpace ?? true
+    }
+
+    /// Prefix plus the space, if it needs one: the text that enters the integration.
+    func trigger(of integration: Integration) -> String {
+        prefix(of: integration) + (needsSpace(integration) ? " " : "")
+    }
+
+    /// Empty text goes back to the keyword of the manifest. Whitespace is dropped.
+    func setPrefix(_ text: String, id: String) {
+        let cleaned = String(text.filter { !$0.isWhitespace })
+        prefixes[id] = cleaned.isEmpty ? nil : cleaned
+        defaults.set(prefixes, forKey: Self.prefixesKey)
+        integrations = resolvePrefixes(scanned)
+    }
+
+    func setNeedsSpace(_ needsSpace: Bool, id: String) {
+        prefixSpace[id] = needsSpace
+        defaults.set(prefixSpace, forKey: Self.prefixSpaceKey)
+    }
+
+    /// Empty or repeated prefixes disable the integration (the first one by name keeps it).
+    private func resolvePrefixes(_ found: [Integration]) -> [Integration] {
+        var result = found
+        var seen: [String: String] = [:]
+        for index in result.indices {
+            guard let manifest = result[index].manifest else { continue }
+            let prefix = prefix(of: result[index])
+            let key = prefix.lowercased()
+            if key.isEmpty {
+                result[index].loadError = tr("Falta la palabra clave (keyword)")
+            } else if let owner = seen[key] {
+                result[index].loadError = tr("El prefijo «%@» ya lo usa «%@»", prefix, owner)
+            } else {
+                seen[key] = manifest.name
+            }
+        }
+        return result
+    }
+
     // MARK: - Loading
 
     private func load(installExamples: Bool) {
@@ -100,7 +160,8 @@ final class IntegrationStore: ObservableObject {
             await MainActor.run {
                 let store = IntegrationStore.shared
                 guard generation == store.loadGeneration else { return }
-                store.integrations = found
+                store.scanned = found
+                store.integrations = store.resolvePrefixes(found)
             }
         }
     }
@@ -146,20 +207,6 @@ final class IntegrationStore: ObservableObject {
             }
         }
         found.sort { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
-
-        // Keywords: empty or repeated ones disable the integration (the first one keeps it).
-        var seen: [String: String] = [:]
-        for index in found.indices {
-            guard let manifest = found[index].manifest else { continue }
-            let keyword = manifest.keyword.lowercased()
-            if keyword.isEmpty {
-                found[index].loadError = tr("Falta la palabra clave (keyword)")
-            } else if let owner = seen[keyword] {
-                found[index].loadError = tr("La palabra clave «%@» ya la usa «%@»", manifest.keyword, owner)
-            } else {
-                seen[keyword] = manifest.name
-            }
-        }
         return found
     }
 
@@ -261,7 +308,7 @@ final class IntegrationStore: ObservableObject {
             id = "\(base)-\(counter)"
             counter += 1
         }
-        let usedKeywords = Set(integrations.compactMap { $0.manifest?.keyword.lowercased() })
+        let usedKeywords = Set(integrations.map { prefix(of: $0).lowercased() })
         let keywordBase = String(base.replacingOccurrences(of: "-", with: "").prefix(8))
         var keyword = keywordBase.isEmpty ? "int" : keywordBase
         counter = 2

@@ -1,7 +1,7 @@
 import Foundation
 
 /// Integration commands in the root search ("Bookmarks" → enters "bm ") and their items
-/// once the query starts with a keyword ("bm laravel"), exclusively.
+/// once the query starts with the prefix of one ("bm laravel", "!laravel"), exclusively.
 @MainActor
 final class IntegrationsProvider: SearchProvider {
     let priority = 10
@@ -11,13 +11,14 @@ final class IntegrationsProvider: SearchProvider {
     func search(_ query: String) async -> ProviderResponse {
         let store = IntegrationStore.shared
         let active = store.active
-        let lowered = query.lowercased()
-        if let integration = active.first(where: {
-            guard let keyword = $0.manifest?.keyword.lowercased() else { return false }
-            return lowered.hasPrefix(keyword + " ")
-        }), let manifest = integration.manifest {
-            let rest = String(query.dropFirst(manifest.keyword.count + 1)).trimmingCharacters(in: .whitespaces)
-            return await searchInside(integration, manifest: manifest, rest: rest)
+        // The longest trigger wins, so "b" without a space doesn't hide "bm ".
+        let entered = active
+            .map { (integration: $0, trigger: store.trigger(of: $0)) }
+            .filter { query.prefix($0.trigger.count).lowercased() == $0.trigger.lowercased() }
+            .max { $0.trigger.count < $1.trigger.count }
+        if let entered, let manifest = entered.integration.manifest {
+            let rest = String(query.dropFirst(entered.trigger.count)).trimmingCharacters(in: .whitespaces)
+            return await searchInside(entered.integration, manifest: manifest, rest: rest)
         }
         return root(query, active)
     }
@@ -25,14 +26,18 @@ final class IntegrationsProvider: SearchProvider {
     // MARK: - Root
 
     private func root(_ query: String, _ active: [Integration]) -> ProviderResponse {
+        let store = IntegrationStore.shared
         let items = active.compactMap { integration -> ResultItem? in
+            let prefix = store.prefix(of: integration)
             guard let manifest = integration.manifest,
-                  let score = Fuzzy.score(query, in: [manifest.name, manifest.keyword]) else { return nil }
+                  let score = Fuzzy.score(query, in: [manifest.name, prefix]) else { return nil }
             let id = "integration:\(integration.id)"
             return ResultItem(id: id, title: manifest.name,
-                              subtitle: tr("Escribe «%@» y un espacio para buscar", manifest.keyword),
+                              subtitle: store.needsSpace(integration)
+                                  ? tr("Escribe «%@» y un espacio para buscar", prefix)
+                                  : tr("Escribe «%@» para buscar", prefix),
                               icon: integration.icon, kind: tr("Integración"),
-                              action: .setQuery(manifest.keyword + " "),
+                              action: .setQuery(store.trigger(of: integration)),
                               score: score + Frecency.shared.boost(id))
         }
         return ProviderResponse(items: items)

@@ -12,6 +12,8 @@ struct IntegrationManifest: Equatable, Sendable {
 
     var name: String
     var keyword: String
+    /// False when the keyword needs no space after it ("!laravel"). Settings can override both.
+    var keywordSpace: Bool
     /// SF Symbol name, or a file name inside the integration folder.
     var icon: String
     var command: String
@@ -53,6 +55,7 @@ struct IntegrationManifest: Equatable, Sendable {
         return .success(IntegrationManifest(
             name: name,
             keyword: keyword,
+            keywordSpace: bool(json["keywordSpace"]) ?? true,
             icon: string("icon").flatMap { $0.isEmpty ? nil : $0 } ?? defaultIcon,
             command: command,
             passQuery: bool(json["passQuery"]) ?? false,

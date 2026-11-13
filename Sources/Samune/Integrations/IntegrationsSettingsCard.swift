@@ -1,7 +1,7 @@
 import AppKit
 import SwiftUI
 
-/// Settings card "Integraciones": list with switch, keyword, variables and "Nueva integración…".
+/// Settings card "Integraciones": list with switch, prefix, variables and "Nueva integración…".
 struct IntegrationsSettingsCard: View {
     @ObservedObject private var store = IntegrationStore.shared
     @State private var showingNew = false
@@ -9,7 +9,7 @@ struct IntegrationsSettingsCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             SectionLabel(tr("Integraciones"))
-            Text(tr("Busca en tus servicios desde el lanzador con una palabra clave y un espacio («bm laravel»)."))
+            Text(tr("Busca en tus servicios desde el lanzador con el prefijo de cada integración («bm laravel», «!laravel»)."))
                 .font(.system(size: 12)).foregroundStyle(Theme.text2)
                 .fixedSize(horizontal: false, vertical: true)
 
@@ -67,8 +67,8 @@ private struct IntegrationRow: View {
                 VStack(alignment: .leading, spacing: 3) {
                     HStack(spacing: 6) {
                         Text(integration.name).fontWeight(.medium)
-                        if let keyword = integration.manifest?.keyword, !keyword.isEmpty {
-                            Text(keyword)
+                        if integration.manifest != nil, !store.prefix(of: integration).isEmpty {
+                            Text(store.prefix(of: integration))
                                 .monospacedText(size: 11)
                                 .foregroundStyle(Theme.text2)
                                 .padding(.horizontal, 6).padding(.vertical, 1)
@@ -93,6 +93,24 @@ private struct IntegrationRow: View {
                     .tint(Theme.accentFill)
                     .controlSize(.small)
                     .accessibilityLabel(tr("Activar %@", integration.name))
+            }
+
+            if let manifest = integration.manifest {
+                HStack(spacing: 8) {
+                    Text(tr("Prefijo")).font(.system(size: 12)).foregroundStyle(Theme.text2)
+                    AppTextField(placeholder: manifest.keyword,
+                                 text: Binding(get: { store.prefixes[integration.id] ?? "" },
+                                               set: { store.setPrefix($0, id: integration.id) }))
+                        .frame(width: 96)
+                        .accessibilityLabel(tr("Prefijo"))
+                    Toggle(tr("Seguido de un espacio"),
+                           isOn: Binding(get: { store.needsSpace(integration) },
+                                         set: { store.setNeedsSpace($0, id: integration.id) }))
+                        .toggleStyle(.checkbox)
+                        .font(.system(size: 12))
+                        .foregroundStyle(Theme.text2)
+                    Spacer(minLength: 0)
+                }
             }
 
             if let variables = integration.manifest?.variables, !variables.isEmpty {

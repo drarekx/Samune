@@ -43,13 +43,16 @@ También puedes copiar a mano cualquier carpeta de ejemplo con otro nombre.
 | Campo | Obligatorio | Qué hace |
 |---|---|---|
 | `name` | sí | Nombre en el lanzador y en Ajustes. |
-| `keyword` | sí | Lo que se escribe antes de un espacio para entrar. Sin espacios; no distingue mayúsculas. Si dos integraciones usan la misma, la segunda (por orden alfabético de nombre) queda desactivada con un aviso. |
+| `keyword` | sí | Prefijo que se escribe para entrar. Sin espacios; no distingue mayúsculas. Si dos integraciones usan el mismo, la segunda (por orden alfabético de nombre) queda desactivada con un aviso. |
+| `keywordSpace` | no | `true` (por defecto): hay que escribir un espacio tras el prefijo (`bm laravel`). `false`: se entra sin espacio (`!laravel`). |
 | `command` | sí | Se ejecuta con `/bin/zsh -lc` desde la carpeta de la integración. El texto de la búsqueda se añade al final, entre comillas, como `$1`. |
 | `icon` | no | Nombre de un [SF Symbol](https://developer.apple.com/sf-symbols/) o de un archivo de imagen de la carpeta (`icon.png`). Por defecto, `puzzlepiece.extension`. |
 | `passQuery` | no | `true`: el script recibe el texto y busca él (en un servidor, por ejemplo). `false` (por defecto): el script se ejecuta sin texto, Samune guarda la lista y la filtra mientras escribes. |
 | `cacheSeconds` | no | Cuánto tiempo se reutiliza la salida, en segundos (300 por defecto). Con `passQuery`, cada texto tiene su propia caché. `0` la desactiva. |
 | `description` | no | Se muestra en Ajustes. |
 | `variables` | no | Valores que se rellenan en Ajustes y llegan al script como variables de entorno. `secret: true` los guarda en el Llavero. |
+
+El prefijo y el espacio se pueden cambiar en **Ajustes → Integraciones** sin tocar el manifiesto: por ejemplo, `!` sin espacio para Bookmarks y escribir `!laravel`. Con el campo vacío vuelve a valer el `keyword`. Si varios prefijos encajan con lo escrito, gana el más largo.
 
 Si el manifiesto no es JSON válido o le falta un campo obligatorio, la integración aparece en Ajustes con el error en amarillo y no se usa.
 
