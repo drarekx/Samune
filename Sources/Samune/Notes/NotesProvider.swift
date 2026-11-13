@@ -24,7 +24,7 @@ final class NotesProvider: SearchProvider {
                 items.append(saveClipboardRow(score: -1))
             }
             let notes = store.active.filter { term.isEmpty || matches(term, $0) != nil }.prefix(exclusiveLimit)
-            // Keep the store's order (pinned, then newest): the score only preserves it.
+            // Keep the store's order (newest first): the score only preserves it.
             for (index, note) in notes.enumerated() {
                 items.append(row(note, score: 1 - Double(index) * 0.001))
             }
@@ -32,7 +32,7 @@ final class NotesProvider: SearchProvider {
         }
 
         guard term.count >= 2 else { return .empty }
-        // The tiny index term keeps pinned and newer notes first among equal matches.
+        // The tiny index term keeps newer notes first among equal matches.
         var items = store.active.enumerated().compactMap { index, note -> ResultItem? in
             guard let score = matches(term, note) else { return nil }
             return row(note, score: score + Frecency.shared.boost(Self.id(note)) - Double(index) * 0.0001)

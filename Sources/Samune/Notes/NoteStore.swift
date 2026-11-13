@@ -82,10 +82,11 @@ final class NoteStore: ObservableObject {
         }
     }
 
-    /// Notes not in the trash: pinned first, then newest.
+    /// Notes not in the trash, newest first.
     var active: [Note] {
+        // Newest first, pinned or not: a pinned note keeps its place by date and only never expires.
         notes.filter { $0.trashed == nil }.sorted {
-            $0.pinned != $1.pinned ? $0.pinned : $0.created > $1.created
+            $0.created > $1.created
         }
     }
 
